@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Core / Admin
+// -----------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  clerkId   String?  @unique
+  role      Role     @default(AGENT)
+  
+  // Relations
+  clientId  String?
+  client    Client?  @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN_STAFF
+  CLIENT_OWNER
+  CLIENT_ADMIN
+  AGENT
+}
+
+// -----------------------------------------------------------------------------
+// Tenant (Client)
+// -----------------------------------------------------------------------------
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  status    ClientStatus @default(ACTIVE)
+  
+  // Settings
+  companyName String?
+  gstNumber   String?
+  address     String?
+  
+  // Relations
+  users         User[]
+  wabaAccounts  WabaAccount[]
+  subscriptions Subscription[]
+  contacts      Contact[]
+  conversations Conversation[]
+  templates     Template[]
+  campaigns     Campaign[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ClientStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+// -----------------------------------------------------------------------------
+// Subscription & Billing
+// -----------------------------------------------------------------------------
+
+model Subscription {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  status    SubStatus @default(TRIAL)
+  expiresAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Plan {
+  id        String   @id @default(cuid())
+  name      String   // Starter, Professional, Business, Enterprise
+  price     Float
+  
+  subscriptions Subscription[]
+}
+
+enum SubStatus {
+  TRIAL
+  ACTIVE
+  CANCELED
+  EXPIRED
+}
+
+// -----------------------------------------------------------------------------
+// WhatsApp Business
+// -----------------------------------------------------------------------------
+
+model WabaAccount {
+  id               String   @id @default(cuid())
+  wabaId           String   @unique // WhatsApp Business Account ID from Meta
+  appId            String?
+  phoneNumberId    String?  @unique
+  displayPhoneNumber String?
+  displayName      String?
+  qualityRating    String?
+  status           String?
+  
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  phone     String
+  name      String?
+  tags      String[] @default([])
+  lastActive DateTime?
+  
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  conversations Conversation[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([clientId, phone])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  status    ConvStatus @default(OPEN)
+  
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id])
+  
+  messages  Message[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ConvStatus {
+  OPEN
+  CLOSED
+  SNOOZED
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  wamid     String?  @unique // WhatsApp Message ID
+  content   String
+  type      String   @default("text")
+  direction MsgDirection
+  status    MsgStatus @default(SENT)
+  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  
+  createdAt DateTime @default(now())
+}
+
+enum MsgDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MsgStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Templates & Campaigns
+// -----------------------------------------------------------------------------
+
+model Template {
+  id        String   @id @default(cuid())
+  name      String
+  language  String
+  category  String
+  status    TemplateStatus @default(DRAFT)
+  
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TemplateStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model Campaign {
+  id        String   @id @default(cuid())
+  name      String
+  status    CampaignStatus @default(DRAFT)
+  
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  scheduledAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Webhooks & Auditing
+// -----------------------------------------------------------------------------
+
+model WebhookLog {
+  id        String   @id @default(cuid())
+  payload   Json
+  processed Boolean  @default(false)
+  error     String?
+  
+  createdAt DateTime @default(now())
+}
+
