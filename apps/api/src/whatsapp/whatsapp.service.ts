@@ -145,68 +145,147 @@ export class WhatsappService {
     const messages = value.messages;
     const contacts = value.contacts;
 
+    if (!messages || messages.length === 0) return;
+
+    // 1. Find the WABA Tenant in the database using metadata.phone_number_id
+    const wabaAccount = await this.prisma.wabaAccount.findFirst({
+      where: { phoneNumberId: metadata.phone_number_id }
+    });
+
+    if (!wabaAccount) {
+      this.logger.warn(`No WABA account found for phone number ID: ${metadata.phone_number_id}`);
+      return;
+    }
+
+    const clientId = wabaAccount.clientId;
+    const contactInfo = contacts?.[0];
+
     for (const message of messages) {
       this.logger.log(`Received message [${message.id}] from ${message.from}`);
       
-      // Here you would typically:
-      // 1. Find the WABA Tenant in the database using metadata.phone_number_id
-      // 2. Find or create the Contact using the 'from' number and contacts[0].profile.name
-      // 3. Save the Message to the database
-      // 4. Trigger any automated replies, chatbots, or WebSocket events
-      
-      // For now, we mock the clientId
-      const clientId = 'mock_client_id';
+      // 2. Find or create the Contact
+      const contactName = contactInfo?.profile?.name || message.from;
+      let contact = await this.prisma.contact.findFirst({
+        where: { clientId, phone: message.from }
+      });
+
+      if (!contact) {
+        contact = await this.prisma.contact.create({
+          data: {
+            clientId,
+            phone: message.from,
+            name: contactName,
+            lastActive: new Date()
+          }
+        });
+      } else {
+        await this.prisma.contact.update({
+          where: { id: contact.id },
+          data: { lastActive: new Date(), name: contactName }
+        });
+      }
+
+      // 3. Find or create the Conversation
+      let conversation = await this.prisma.conversation.findFirst({
+        where: { clientId, contactId: contact.id }
+      });
+
+      if (!conversation) {
+        conversation = await this.prisma.conversation.create({
+          data: {
+            clientId,
+            contactId: contact.id,
+            status: 'OPEN'
+          }
+        });
+      } else {
+        await this.prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date(), status: 'OPEN' }
+        });
+      }
+
+      // 4. Save the Message to the database
+      const savedMessage = await this.prisma.message.create({
+        data: {
+          wamid: message.id,
+          conversationId: conversation.id,
+          content: message.text?.body || '[Media]',
+          type: message.type || 'text',
+          direction: 'INBOUND',
+          status: 'DELIVERED',
+        }
+      });
 
       // 5. Emit the new message via WebSocket to the Next.js client
       this.chatGateway.emitNewMessage(clientId, {
-        id: message.id,
-        from: message.from,
-        text: message.text?.body || '[Media]',
-        timestamp: message.timestamp,
-        type: 'INBOUND'
+        id: savedMessage.id,
+        conversationId: conversation.id,
+        content: savedMessage.content,
+        direction: savedMessage.direction,
+        status: savedMessage.status,
+        createdAt: savedMessage.createdAt,
       });
 
       // 6. AI Chatbot automation
       // If the client has AI enabled, generate a response
-      if (message.text?.body) {
-        // Mocking the system prompt for now. In prod, fetch from Client settings in DB.
-        const systemPrompt = "You are a helpful customer support assistant for Algo Matrix. Be polite and concise.";
+      const client = await this.prisma.client.findUnique({
+        where: { id: clientId },
+        select: { aiEnabled: true, aiSystemPrompt: true }
+      });
+
+      if (client?.aiEnabled && message.text?.body) {
+        const systemPrompt = client.aiSystemPrompt || "You are a helpful customer support assistant for Algo Matrix. Be polite and concise.";
         const aiReply = await this.aiService.generateReply(message.text.body, systemPrompt);
         
         this.logger.log(`AI Reply generated: ${aiReply}`);
         
+        const savedAiMessage = await this.prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            content: aiReply,
+            type: 'text',
+            direction: 'OUTBOUND',
+            status: 'SENT',
+          }
+        });
+
         // Emit the AI response to the UI
         this.chatGateway.emitNewMessage(clientId, {
-          id: `ai_${Date.now()}`,
-          from: 'AI Agent',
-          text: aiReply,
-          timestamp: Math.floor(Date.now() / 1000),
-          type: 'OUTBOUND'
+          id: savedAiMessage.id,
+          conversationId: conversation.id,
+          content: savedAiMessage.content,
+          direction: savedAiMessage.direction,
+          status: savedAiMessage.status,
+          createdAt: savedAiMessage.createdAt,
         });
         
         // In prod, you would actually call the Meta API here to send the `aiReply` back to `message.from`
-      } else if (message.image) {
-        // Handle media message
-        const imageId = message.image.id;
-        this.logger.log(`Received image message ${imageId}. Triggering download and upload to S3...`);
-        
-        // In production:
-        // 1. Fetch media URL from Meta Graph API using imageId
-        // 2. Download binary data from Meta URL
-        // 3. Upload to our S3 bucket: 
-        //    const publicUrl = await this.storageService.uploadBuffer(`media/${imageId}.jpeg`, imageBuffer, message.image.mime_type);
-        // 4. Save publicUrl to Message DB
       }
     }
   }
 
   private async handleMessageStatusUpdate(value: any) {
     const statuses = value.statuses;
+    const metadata = value.metadata;
+    
+    // Find the WABA Tenant in the database using metadata.phone_number_id
+    const wabaAccount = await this.prisma.wabaAccount.findFirst({
+      where: { phoneNumberId: metadata.phone_number_id }
+    });
+
+    if (!wabaAccount) return;
+    const clientId = wabaAccount.clientId;
+
     for (const status of statuses) {
       this.logger.log(`Message [${status.id}] status updated to: ${status.status} for recipient ${status.recipient_id}`);
       
-      const clientId = 'mock_client_id';
-      
+      // Update Message status in DB
+      await this.prisma.message.updateMany({
+        where: { wamid: status.id },
+        data: { status: status.status.toUpperCase() as any }
+      });
+
       this.chatGateway.emitMessageStatus(clientId, {
         id: status.id,
         status: status.status,

@@ -3,73 +3,68 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
-import { ServerToClientEvents, ClientToServerEvents, ChatMessage, MessageStatusUpdate } from '@algo-matrix/shared';
-// In a real app, you would import a service to verify the JWT token
-// import { verifyToken } from '@clerk/clerk-sdk-node';
+import { Logger, Injectable } from '@nestjs/common';
+import { ServerToClientEvents, ClientToServerEvents } from '@algo-matrix/shared';
+import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Allow all origins for dev. In prod, restrict to your Next.js domain
+    origin: '*',
   },
 })
+@Injectable()
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server<ClientToServerEvents, ServerToClientEvents>;
 
   private readonly logger = new Logger(ChatGateway.name);
-
-  // Map to store connected clients by their tenant/client ID
   private activeClients = new Map<string, string[]>();
 
+  constructor(private jwtService: JwtService) {}
+
   async handleConnection(client: Socket) {
-    const token = client.handshake.auth?.token;
+    const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
     
     if (!token) {
       this.logger.warn(`Client ${client.id} tried to connect without a token`);
-      // client.disconnect();
-      // return;
+      client.disconnect();
+      return;
     }
 
-    // Usually you would verify the token here:
-    // const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-    // const clientId = payload.clientId;
-    
-    // For now, we mock the clientId
-    const clientId = 'mock_client_id';
+    try {
+      const payload = this.jwtService.verify(token, { secret: process.env.JWT_SECRET || 'supersecretkey' });
+      const clientId = payload.clientId;
+      
+      if (!clientId) {
+        this.logger.warn(`Token valid but no clientId found for client ${client.id}`);
+        client.disconnect();
+        return;
+      }
 
-    const clientRooms = this.activeClients.get(clientId) || [];
-    clientRooms.push(client.id);
-    this.activeClients.set(clientId, clientRooms);
-    
-    // Join a room specific to the tenant
-    client.join(clientId);
-    
-    this.logger.log(`Client connected: ${client.id} to Tenant Room: ${clientId}`);
+      const clientRooms = this.activeClients.get(clientId) || [];
+      clientRooms.push(client.id);
+      this.activeClients.set(clientId, clientRooms);
+      
+      client.join(clientId);
+      this.logger.log(`Client connected: ${client.id} to Tenant Room: ${clientId}`);
+    } catch (error) {
+      this.logger.warn(`Invalid token for client ${client.id}`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
-    // Optionally clean up the activeClients map
   }
 
-  /**
-   * Method to broadcast a new incoming WhatsApp message to the specific tenant
-   */
-  emitNewMessage(clientId: string, message: ChatMessage) {
+  emitNewMessage(clientId: string, message: any) {
     this.server.to(clientId).emit('new_message', message);
     this.logger.log(`Emitted new_message to Tenant Room: ${clientId}`);
   }
 
-  /**
-   * Method to broadcast message status updates (sent/delivered/read)
-   */
-  emitMessageStatus(clientId: string, statusUpdate: MessageStatusUpdate) {
+  emitMessageStatus(clientId: string, statusUpdate: any) {
     this.server.to(clientId).emit('message_status', statusUpdate);
     this.logger.log(`Emitted message_status to Tenant Room: ${clientId}`);
   }

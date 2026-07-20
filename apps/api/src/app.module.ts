@@ -10,6 +10,7 @@ import { CampaignModule } from './campaign/campaign.module';
 import { AiModule } from './ai/ai.module';
 import { BillingModule } from './billing/billing.module';
 import { StorageModule } from './storage/storage.module';
+import { ContactsModule } from './contacts/contacts.module';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { StorageModule } from './storage/storage.module';
     CampaignModule,
     AiModule,
     BillingModule,
-    StorageModule
+    StorageModule,
+    ContactsModule
   ],
   controllers: [AppController],
   providers: [AppService],

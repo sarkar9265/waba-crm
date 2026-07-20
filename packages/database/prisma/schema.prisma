@@ -15,7 +15,7 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
-  clerkId   String?  @unique
+  password  String?
   role      Role     @default(AGENT)
   
   // Relations
@@ -44,10 +44,12 @@ model Client {
   status    ClientStatus @default(ACTIVE)
   
   // Settings
-  companyName String?
-  gstNumber   String?
-  address     String?
-  
+  companyName    String?
+  gstNumber      String?
+  address        String?
+  aiEnabled      Boolean @default(false)
+  aiSystemPrompt String?
+
   // Relations
   users         User[]
   wabaAccounts  WabaAccount[]

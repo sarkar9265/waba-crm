@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Query, Res, HttpStatus, Logger, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Res, HttpStatus, Logger, Req, UseGuards } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import type { Response, Request } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('webhook/whatsapp')
 export class WhatsappController {
@@ -33,10 +34,10 @@ export class WhatsappController {
   /**
    * Endpoint for frontend to send the OAuth code after Embedded Signup
    */
+  @UseGuards(JwtAuthGuard)
   @Post('oauth')
   async handleOAuthCode(@Body('code') code: string, @Req() req: any) {
-    // In a real app, req.user.clientId would be populated by ClerkAuthGuard
-    const clientId = req.user?.clientId || 'mock_client_id';
+    const clientId = req.user?.clientId;
     
     if (!code) {
       return { success: false, error: 'No OAuth code provided' };
