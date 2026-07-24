@@ -3,6 +3,9 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger, Injectable } from '@nestjs/common';
@@ -67,5 +70,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitMessageStatus(clientId: string, statusUpdate: any) {
     this.server.to(clientId).emit('message_status', statusUpdate);
     this.logger.log(`Emitted message_status to Tenant Room: ${clientId}`);
+  }
+
+  emitConversationUpdated(clientId: string, conversation: any) {
+    this.server.to(clientId).emit('conversation_updated', conversation);
+    this.logger.log(`Emitted conversation_updated to Tenant Room: ${clientId}`);
+  }
+
+  @SubscribeMessage('typing')
+  handleTyping(
+    @MessageBody() data: { conversationId: string, isTyping: boolean },
+    @ConnectedSocket() client: Socket
+  ) {
+    const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
+    if (!token) return;
+    try {
+      const payload = this.jwtService.verify(token, { secret: process.env.JWT_SECRET || 'supersecretkey' });
+      const clientId = payload.clientId;
+      // Broadcast to other clients in the same tenant room
+      client.to(clientId).emit('typing', { ...data, userId: payload.sub });
+    } catch (error) {
+      // Ignore
+    }
   }
 }

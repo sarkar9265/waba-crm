@@ -12,18 +12,22 @@ datasource db {
 // -----------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String?
-  role      Role     @default(AGENT)
-  
+  id       String  @id @default(cuid())
+  email    String  @unique
+  name     String?
+  password String?
+  role     Role    @default(AGENT)
+
   // Relations
-  clientId  String?
-  client    Client?  @relation(fields: [clientId], references: [id])
-  
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  assignedChats Conversation[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
 }
 
 enum Role {
@@ -34,15 +38,52 @@ enum Role {
   AGENT
 }
 
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  isRead    Boolean          @default(false)
+
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityId   String?
+  entityType String?
+  details    Json?
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+}
+
 // -----------------------------------------------------------------------------
 // Tenant (Client)
 // -----------------------------------------------------------------------------
 
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  status    ClientStatus @default(ACTIVE)
-  
+  id     String       @id @default(cuid())
+  name   String
+  status ClientStatus @default(ACTIVE)
+
   // Settings
   companyName    String?
   gstNumber      String?
@@ -58,7 +99,12 @@ model Client {
   conversations Conversation[]
   templates     Template[]
   campaigns     Campaign[]
-  
+  automations   Automation[]
+  transactions  Transaction[]
+  invoices      Invoice[]
+  auditLogs     AuditLog[]
+  media         Media[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -74,24 +120,24 @@ enum ClientStatus {
 // -----------------------------------------------------------------------------
 
 model Subscription {
-  id        String   @id @default(cuid())
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id])
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
+  id       String @id @default(cuid())
+  planId   String
+  plan     Plan   @relation(fields: [planId], references: [id])
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   status    SubStatus @default(TRIAL)
   expiresAt DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Plan {
-  id        String   @id @default(cuid())
-  name      String   // Starter, Professional, Business, Enterprise
-  price     Float
-  
+  id    String @id @default(cuid())
+  name  String // Starter, Professional, Business, Enterprise
+  price Float
+
   subscriptions Subscription[]
 }
 
@@ -102,59 +148,117 @@ enum SubStatus {
   EXPIRED
 }
 
+model Transaction {
+  id                String   @id @default(cuid())
+  amount            Float
+  currency          String   @default("INR")
+  status            String   // e.g. "SUCCESS", "FAILED"
+  razorpayOrderId   String?
+  razorpayPaymentId String?  @unique
+  razorpaySignature String?
+
+  clientId          String
+  client            Client   @relation(fields: [clientId], references: [id])
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  invoice           Invoice?
+}
+
+model Invoice {
+  id            String      @id @default(cuid())
+  invoiceNumber String      @unique
+  url           String?
+  
+  clientId      String
+  client        Client      @relation(fields: [clientId], references: [id])
+  
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
 // -----------------------------------------------------------------------------
 // WhatsApp Business
 // -----------------------------------------------------------------------------
 
 model WabaAccount {
-  id               String   @id @default(cuid())
-  wabaId           String   @unique // WhatsApp Business Account ID from Meta
-  appId            String?
-  phoneNumberId    String?  @unique
+  id                 String  @id @default(cuid())
+  wabaId             String  @unique // WhatsApp Business Account ID from Meta
+  appId              String?
+  phoneNumberId      String? @unique
   displayPhoneNumber String?
-  displayName      String?
-  qualityRating    String?
-  status           String?
-  
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
+  displayName        String?
+  qualityRating      String?
+  status             String?
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+enum ContactStatus {
+  OPTED_IN
+  OPTED_OUT
+}
+
 model Contact {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   phone     String
-  name      String?
-  tags      String[] @default([])
+  name      String? // Legacy field, kept for fallback/migration
+  firstName String?
+  lastName  String?
+  email     String?
+  status    ContactStatus @default(OPTED_IN)
+
+  tags       String[]  @default([])
   lastActive DateTime?
-  
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   conversations Conversation[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
+  avatarUrl    String?
+  customFields Json?
+  notes        String?
+
   @@unique([clientId, phone])
 }
 
 model Conversation {
-  id        String   @id @default(cuid())
-  status    ConvStatus @default(OPEN)
-  
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
+  id     String     @id @default(cuid())
+  status ConvStatus @default(OPEN)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   contactId String
-  contact   Contact  @relation(fields: [contactId], references: [id])
-  
-  messages  Message[]
-  
+  contact   Contact @relation(fields: [contactId], references: [id])
+
+  messages Message[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  unreadCount   Int       @default(0)
+  priority      String    @default("NORMAL")
+  isArchived    Boolean   @default(false)
+  isStarred     Boolean   @default(false)
+  slaTimer      DateTime?
+  labels        String[]  @default([])
+  internalNotes String?
+
+  assignedToId String?
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
 }
 
 enum ConvStatus {
@@ -164,17 +268,31 @@ enum ConvStatus {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  wamid     String?  @unique // WhatsApp Message ID
+  id        String       @id @default(cuid())
+  wamid     String?      @unique // WhatsApp Message ID
   content   String
-  type      String   @default("text")
+  type      String       @default("text")
   direction MsgDirection
-  status    MsgStatus @default(SENT)
-  
+  status    MsgStatus    @default(SENT)
+
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id])
-  
+
   createdAt DateTime @default(now())
+
+  mediaUrl  String?
+  mediaType String?
+  mediaSize Int?
+  mediaName String?
+
+  interactiveData Json?
+
+  isDeleted Boolean @default(false)
+  isPinned  Boolean @default(false)
+
+  replyToId String?
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies   Message[] @relation("MessageReplies")
 }
 
 enum MsgDirection {
@@ -194,17 +312,19 @@ enum MsgStatus {
 // -----------------------------------------------------------------------------
 
 model Template {
-  id        String   @id @default(cuid())
-  name      String
-  language  String
-  category  String
-  status    TemplateStatus @default(DRAFT)
-  
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String         @id @default(cuid())
+  name       String
+  language   String
+  category   String
+  status     TemplateStatus @default(DRAFT)
+  components Json?
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  Campaign  Campaign[]
 }
 
 enum TemplateStatus {
@@ -215,15 +335,26 @@ enum TemplateStatus {
 }
 
 model Campaign {
-  id        String   @id @default(cuid())
-  name      String
-  status    CampaignStatus @default(DRAFT)
-  
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  
+  id     String         @id @default(cuid())
+  name   String
+  status CampaignStatus @default(DRAFT)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  templateId String?
+  template   Template? @relation(fields: [templateId], references: [id])
+
+  audience  Json?
+  variables Json?
+
+  sent      Int @default(0)
+  delivered Int @default(0)
+  read      Int @default(0)
+  failed    Int @default(0)
+
   scheduledAt DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -232,8 +363,29 @@ enum CampaignStatus {
   DRAFT
   SCHEDULED
   RUNNING
+  PAUSED
   COMPLETED
   FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Automation Builder
+// -----------------------------------------------------------------------------
+
+model Automation {
+  id                String  @id @default(cuid())
+  name              String
+  triggerType       String
+  triggerConditions Json?
+  nodes             Json?
+  edges             Json?
+  isActive          Boolean @default(false)
+
+  clientId          String
+  client            Client  @relation(fields: [clientId], references: [id])
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 // -----------------------------------------------------------------------------
@@ -241,11 +393,45 @@ enum CampaignStatus {
 // -----------------------------------------------------------------------------
 
 model WebhookLog {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   payload   Json
-  processed Boolean  @default(false)
+  processed Boolean @default(false)
   error     String?
-  
+
   createdAt DateTime @default(now())
 }
 
+// -----------------------------------------------------------------------------
+// Media & Storage
+// -----------------------------------------------------------------------------
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  VOICE
+  DOCUMENT
+}
+
+enum StorageProvider {
+  LOCAL
+  S3
+  CLOUDINARY
+}
+
+model Media {
+  id           String          @id @default(cuid())
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  type         MediaType
+  provider     StorageProvider @default(LOCAL)
+  url          String
+  
+  clientId     String
+  client       Client          @relation(fields: [clientId], references: [id])
+  
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}

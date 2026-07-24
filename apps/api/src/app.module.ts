@@ -11,6 +11,12 @@ import { AiModule } from './ai/ai.module';
 import { BillingModule } from './billing/billing.module';
 import { StorageModule } from './storage/storage.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { TemplatesModule } from './templates/templates.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { AutomationModule } from './automation/automation.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -28,7 +34,13 @@ import { ContactsModule } from './contacts/contacts.module';
     AiModule,
     BillingModule,
     StorageModule,
-    ContactsModule
+    ContactsModule,
+    TemplatesModule,
+    AnalyticsModule,
+    AutomationModule,
+    NotificationsModule,
+    AuditLogModule,
+    SearchModule
   ],
   controllers: [AppController],
   providers: [AppService],

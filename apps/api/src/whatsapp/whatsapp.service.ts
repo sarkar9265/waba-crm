@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ChatGateway } from '../chat/chat.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../storage/storage.service';
+import { AutomationService } from '../automation/automation.service';
 
 @Injectable()
 export class WhatsappService {
@@ -17,6 +18,7 @@ export class WhatsappService {
     private chatGateway: ChatGateway,
     private aiService: AiService,
     private storageService: StorageService,
+    private automationService: AutomationService,
   ) {}
 
   /**
@@ -74,10 +76,57 @@ export class WhatsappService {
       });
 
       return wabaAccount;
-    } catch (error) {
-      this.logger.error(`Error exchanging OAuth code: ${error.response?.data?.error?.message || error.message}`);
+    } catch (error: any) {
+      this.logger.error(`Error exchanging OAuth code: ${error?.response?.data?.error?.message || error.message}`);
+      
+      // MOCK FALLBACK FOR LOCAL TESTING (since we don't have a real Meta App configured in local env)
+      if (process.env.NODE_ENV !== 'production' && (!appId || !appSecret || error.response?.status >= 400)) {
+        this.logger.warn('Falling back to MOCK WABA Account generation for local testing');
+        
+        const mockPhoneId = `mock_phone_${Math.floor(Math.random() * 1000000)}`;
+        const mockWabaId = `mock_waba_${Math.floor(Math.random() * 1000000)}`;
+        
+        return this.prisma.wabaAccount.create({
+          data: {
+            wabaId: mockWabaId,
+            phoneNumberId: mockPhoneId,
+            displayPhoneNumber: '+1 (555) 000-MOCK',
+            displayName: 'Mock Algo Matrix Support',
+            status: 'CONNECTED',
+            qualityRating: 'GREEN',
+            clientId: clientId,
+            appId: appId || 'mock_app_id'
+          }
+        });
+      }
+      
       throw new HttpException('Failed to connect Meta account', HttpStatus.BAD_REQUEST);
     }
+  }
+
+  async getAccounts(clientId: string) {
+    return this.prisma.wabaAccount.findMany({
+      where: { clientId }
+    });
+  }
+
+  async disconnectAccount(accountId: string, clientId: string) {
+    const account = await this.prisma.wabaAccount.findFirst({
+      where: { id: accountId, clientId }
+    });
+
+    if (!account) {
+      throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
+    }
+
+    // In a real implementation, we might want to also call the Graph API to revoke permissions
+    // https://graph.facebook.com/v19.0/{user-id}/permissions
+
+    await this.prisma.wabaAccount.delete({
+      where: { id: accountId }
+    });
+
+    return { success: true };
   }
 
   private async fetchWabaDetails(token: string) {
@@ -227,7 +276,11 @@ export class WhatsappService {
         createdAt: savedMessage.createdAt,
       });
 
-      // 6. AI Chatbot automation
+      // 6. Automation Engine (Workflows)
+      await this.automationService.handleTrigger(clientId, 'INCOMING_MESSAGE', { message, contact, conversation });
+      await this.automationService.handleTrigger(clientId, 'KEYWORD', { message, contact, conversation });
+
+      // 7. AI Chatbot automation
       // If the client has AI enabled, generate a response
       const client = await this.prisma.client.findUnique({
         where: { id: clientId },
@@ -260,8 +313,51 @@ export class WhatsappService {
           createdAt: savedAiMessage.createdAt,
         });
         
-        // In prod, you would actually call the Meta API here to send the `aiReply` back to `message.from`
+        // Call the Meta API to send the aiReply back
+        await this.sendMessageToMeta(clientId, metadata.phone_number_id, message.from, 'text', { body: aiReply });
       }
+    }
+  }
+
+  /**
+   * Sends a message via Meta Cloud API
+   */
+  async sendMessageToMeta(clientId: string, phoneNumberId: string, to: string, type: string, contentData: any) {
+    try {
+      const token = process.env.META_ACCESS_TOKEN; // Or fetch tenant-specific token if applicable
+      const url = `https://graph.facebook.com/${this.graphApiVersion}/${phoneNumberId}/messages`;
+      
+      const payload: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: type,
+      };
+
+      if (type === 'text') {
+        payload.text = contentData;
+      } else if (['image', 'video', 'document', 'audio'].includes(type)) {
+        payload[type] = contentData;
+      } else if (type === 'interactive') {
+        payload.interactive = contentData;
+      } else if (type === 'template') {
+        payload.template = contentData;
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, payload, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      );
+      
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Failed to send WhatsApp message to ${to}`, error.response?.data || error.message);
+      // Depending on requirements, we could throw here or just return null
+      return null;
     }
   }
 

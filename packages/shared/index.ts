@@ -17,10 +17,13 @@ export interface MessageStatusUpdate {
 export interface ServerToClientEvents {
   new_message: (message: ChatMessage) => void;
   message_status: (status: MessageStatusUpdate) => void;
+  conversation_updated: (conversation: any) => void;
+  typing: (data: { conversationId: string, isTyping: boolean, userId: string }) => void;
 }
 
 export interface ClientToServerEvents {
   join_room: (tenantId: string) => void;
+  typing: (data: { conversationId: string, isTyping: boolean }) => void;
   send_message: (payload: { to: string; text: string; tenantId: string }) => void;
 }
 

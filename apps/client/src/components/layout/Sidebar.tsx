@@ -14,7 +14,9 @@ import {
   Workflow,
   Settings,
   BarChart,
-  CreditCard
+  CreditCard,
+  ClipboardList,
+  ImageIcon
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -24,11 +26,14 @@ const navItems = [
   { name: "Campaigns & Broadcasts", href: "/campaigns", icon: Megaphone },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Media Manager", href: "/media", icon: ImageIcon },
   { name: "AI Chatbot", href: "/ai-chatbot", icon: Bot },
   { name: "Automation", href: "/automation", icon: Workflow },
   { name: "Analytics", href: "/analytics", icon: BarChart },
   { name: "Billing & Plans", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Team & Roles", href: "/team", icon: Users },
+  { name: "Audit Logs", href: "/audit-logs", icon: ClipboardList },
 ];
 
 export function Sidebar() {

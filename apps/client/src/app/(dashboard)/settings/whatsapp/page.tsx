@@ -1,39 +1,144 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from "@algo-matrix/ui";
-import { MessageCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { MessageCircle, CheckCircle2, AlertCircle, RefreshCw, Trash2, Loader2, Activity } from "lucide-react";
+import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/store/useAuthStore";
+import { toast } from "sonner";
+
+interface WabaAccount {
+  id: string;
+  wabaId: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  displayName: string;
+  qualityRating: string;
+  status: string;
+}
+
+interface WebhookHealth {
+  status: string;
+  webhook_verified: boolean;
+  last_event: string;
+}
 
 export default function WhatsAppSettingsPage() {
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [accounts, setAccounts] = useState<WabaAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [webhookHealth, setWebhookHealth] = useState<WebhookHealth | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const { token } = useAuthStore();
 
-  const handleMetaLogin = () => {
+  useEffect(() => {
+    if (token) {
+      fetchData();
+    }
+  }, [token]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [accountsRes, healthRes] = await Promise.all([
+        api.get("/webhook/whatsapp/accounts"),
+        api.get("/webhook/whatsapp/health")
+      ]);
+      setAccounts(accountsRes.data);
+      setWebhookHealth(healthRes.data);
+    } catch (error) {
+      console.error("Failed to load WhatsApp data", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMetaLogin = async () => {
     setIsConnecting(true);
     
-    // In a real scenario, this is where we invoke the FB.login() SDK
-    // with the specific scopes required for Embedded Signup.
-    // e.g. FB.login(callback, { scopes: 'whatsapp_business_management,whatsapp_business_messaging' })
+    // In a production scenario, we would use the FB.login() SDK here:
+    // FB.login(callback, { scopes: 'whatsapp_business_management,whatsapp_business_messaging' })
+    // For this demonstration, we'll mock the flow by sending a fake OAuth code to our backend.
     
-    // Simulating the popup and redirect delay
-    setTimeout(() => {
-      // Upon successful Meta login, we would take the OAuth code and 
-      // send it to our NestJS backend to exchange it for a System User token.
-      
-      // Simulating successful connection
-      setConnected(true);
-      setIsConnecting(false);
-    }, 2500);
+    setTimeout(async () => {
+      try {
+        await api.post("/webhook/whatsapp/oauth", { code: "mock_oauth_code_" + Date.now() });
+        toast.success("WhatsApp account successfully connected!");
+        fetchData();
+      } catch (error) {
+        toast.error("Failed to connect account.");
+      } finally {
+        setIsConnecting(false);
+      }
+    }, 1500);
   };
+
+  const handleDisconnect = async (accountId: string) => {
+    if (!confirm("Are you sure you want to disconnect this WhatsApp account? Messaging will stop working immediately.")) {
+      return;
+    }
+    
+    setIsDisconnecting(accountId);
+    try {
+      await api.delete(`/webhook/whatsapp/accounts/${accountId}`);
+      toast.success("Account disconnected.");
+      setAccounts(accounts.filter(a => a.id !== accountId));
+    } catch (error) {
+      toast.error("Failed to disconnect account.");
+    } finally {
+      setIsDisconnecting(null);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await api.post("/webhook/whatsapp/reconnect");
+      toast.success("Tokens and webhook configurations refreshed.");
+      fetchData();
+    } catch (error) {
+      toast.error("Refresh failed.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">WhatsApp Integration</h1>
-        <p className="text-[var(--muted-foreground)] mt-1">Connect your WhatsApp Business Account (WABA) to Algo Matrix.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">WhatsApp Integration</h1>
+          <p className="text-[var(--muted-foreground)] mt-1">Connect your WhatsApp Business Account (WABA) to Algo Matrix.</p>
+        </div>
+        
+        {accounts.length > 0 && (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm bg-[var(--accent)]/50 px-3 py-1.5 rounded-md border border-[var(--border)]">
+              <Activity className={`h-4 w-4 ${webhookHealth?.webhook_verified ? 'text-[#25D366]' : 'text-red-500'}`} />
+              <span className="font-medium text-[var(--muted-foreground)]">Webhook:</span>
+              <span className={webhookHealth?.webhook_verified ? 'text-[#25D366] font-medium' : 'text-red-500 font-medium'}>
+                {webhookHealth?.webhook_verified ? 'Healthy' : 'Disconnected'}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing} className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        )}
       </div>
 
-      {!connected ? (
+      {accounts.length === 0 ? (
         <Card className="border-[var(--border)] overflow-hidden">
           <div className="bg-[var(--accent)]/50 p-8 text-center flex flex-col items-center justify-center border-b border-[var(--border)]">
             <div className="h-16 w-16 bg-[#25D366]/10 text-[#25D366] rounded-full flex items-center justify-center mb-4">
@@ -49,7 +154,7 @@ export default function WhatsAppSettingsPage() {
               className="bg-[#1877F2] hover:bg-[#1877F2]/90 text-white gap-2 font-medium"
             >
               {isConnecting ? (
-                "Connecting..."
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -79,36 +184,80 @@ export default function WhatsAppSettingsPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-[var(--primary)]/20 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-[#25D366]" />
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  Algo Matrix Support
-                  <Badge variant="outline" className="text-[#25D366] border-[#25D366] bg-[#25D366]/10">Connected</Badge>
-                </CardTitle>
-                <p className="text-sm text-[var(--muted-foreground)] mt-1">WABA ID: 104928475930281</p>
-              </div>
-              <Button variant="outline" size="sm">Manage on Meta</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid sm:grid-cols-2 gap-4 mt-2">
-              <div className="p-4 rounded-lg bg-[var(--accent)] border border-[var(--border)]">
-                <div className="text-xs text-[var(--muted-foreground)] mb-1">Display Phone Number</div>
-                <div className="font-semibold">+1 (555) 019-2834</div>
-                <div className="text-xs text-[var(--muted-foreground)] mt-1">Phone ID: 8472938475</div>
-              </div>
-              <div className="p-4 rounded-lg bg-[var(--accent)] border border-[var(--border)]">
-                <div className="text-xs text-[var(--muted-foreground)] mb-1">Quality Rating</div>
-                <div className="font-semibold text-[#25D366]">High</div>
-                <div className="text-xs text-[var(--muted-foreground)] mt-1">Tier: 1K msgs/day</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          {accounts.map(account => (
+            <Card key={account.id} className="border-[var(--primary)]/20 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#25D366]" />
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      {account.displayName || 'WhatsApp Account'}
+                      <Badge variant="outline" className="text-[#25D366] border-[#25D366] bg-[#25D366]/10">
+                        {account.status || 'CONNECTED'}
+                      </Badge>
+                    </CardTitle>
+                    <p className="text-sm text-[var(--muted-foreground)] mt-1">WABA ID: {account.wabaId}</p>
+                  </div>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => handleDisconnect(account.id)}
+                    disabled={isDisconnecting === account.id}
+                  >
+                    {isDisconnecting === account.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Disconnect
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid sm:grid-cols-2 gap-4 mt-2">
+                  <div className="p-4 rounded-lg bg-[var(--accent)] border border-[var(--border)]">
+                    <div className="text-xs text-[var(--muted-foreground)] mb-1">Display Phone Number</div>
+                    <div className="font-semibold">{account.displayPhoneNumber || 'Unknown'}</div>
+                    <div className="text-xs text-[var(--muted-foreground)] mt-1">Phone ID: {account.phoneNumberId}</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-[var(--accent)] border border-[var(--border)]">
+                    <div className="text-xs text-[var(--muted-foreground)] mb-1">Quality Rating</div>
+                    <div className={`font-semibold ${account.qualityRating === 'GREEN' ? 'text-[#25D366]' : account.qualityRating === 'YELLOW' ? 'text-yellow-500' : 'text-red-500'}`}>
+                      {account.qualityRating || 'N/A'}
+                    </div>
+                    <div className="text-xs text-[var(--muted-foreground)] mt-1">Status: Active</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          <div className="pt-4 flex justify-center">
+            <Button variant="outline" className="gap-2 text-[var(--muted-foreground)]" onClick={handleMetaLogin}>
+              <PlusIcon className="h-4 w-4" />
+              Connect Another Number
+            </Button>
+          </div>
+        </div>
       )}
     </div>
+  );
+}
+
+function PlusIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </svg>
   );
 }

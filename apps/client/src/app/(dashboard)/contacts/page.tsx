@@ -1,74 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Button, Input, Badge, Card,
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter,
   Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Tabs, TabsContent, TabsList, TabsTrigger
 } from "@algo-matrix/ui";
-import { Search, Filter, Plus, Upload, Download, MoreHorizontal, User, Phone, Mail, Tag, Edit, Trash } from "lucide-react";
-
-type Contact = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-  tags: string[];
-  status: "Opted-in" | "Opted-out";
-  lastActive: string;
-  attributes: Record<string, string>;
-};
+import { Search, Filter, Plus, Upload, Download, MoreHorizontal, Phone, Mail, Edit, Trash, Loader2, Activity } from "lucide-react";
+import { useContactsStore, Contact } from "@/store/useContactsStore";
+import { format } from "date-fns";
+import { api } from "@/lib/api";
 
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<Contact[]>([
-    {
-      id: "c_1",
-      firstName: "John",
-      lastName: "Doe",
-      phone: "+1 555 123 4567",
-      email: "john.doe@example.com",
-      tags: ["VIP", "Lead"],
-      status: "Opted-in",
-      lastActive: "2 mins ago",
-      attributes: { Company: "Acme Corp", LTV: "$12,500" }
-    },
-    {
-      id: "c_2",
-      firstName: "Sarah",
-      lastName: "Smith",
-      phone: "+1 555 987 6543",
-      email: "sarah.s@tech.inc",
-      tags: ["Enterprise"],
-      status: "Opted-in",
-      lastActive: "Yesterday",
-      attributes: { Company: "Tech Inc" }
-    },
-    {
-      id: "c_3",
-      firstName: "Mike",
-      lastName: "Johnson",
-      phone: "+1 555 222 1111",
-      email: "mike@domain.com",
-      tags: ["Support"],
-      status: "Opted-out",
-      lastActive: "1 week ago",
-      attributes: {}
-    },
-    {
-      id: "c_4",
-      firstName: "Emma",
-      lastName: "Wilson",
-      phone: "+1 555 444 3333",
-      email: "emma.w@gmail.com",
-      tags: ["Lead"],
-      status: "Opted-in",
-      lastActive: "2 hours ago",
-      attributes: { Source: "Webinar" }
-    },
-  ]);
+  const { 
+    contacts, total, page, limit, totalPages, loading, 
+    fetchContacts, bulkAction, deleteContact, createContact, updateContact, importContacts, exportContacts, mergeContacts 
+  } = useContactsStore();
 
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -77,22 +27,22 @@ export default function ContactsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [contactActivity, setContactActivity] = useState<any[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredContacts = contacts.filter(c => {
-    const term = search.toLowerCase();
-    return (
-      c.firstName.toLowerCase().includes(term) ||
-      c.lastName.toLowerCase().includes(term) ||
-      c.phone.includes(term) ||
-      c.email.toLowerCase().includes(term)
-    );
-  });
+  // Filters state
+  const [statusFilter, setStatusFilter] = useState<string>("");
+
+  useEffect(() => {
+    fetchContacts({ page: 1, limit, search, status: statusFilter });
+  }, [search, statusFilter]);
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredContacts.length) {
+    if (selectedIds.size === contacts.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredContacts.map(c => c.id)));
+      setSelectedIds(new Set(contacts.map(c => c.id)));
     }
   };
 
@@ -106,72 +56,192 @@ export default function ContactsPage() {
     setSelectedIds(newSet);
   };
 
-  const handleDelete = (id: string) => {
-    setContacts(contacts.filter(c => c.id !== id));
+  const handleDelete = async (id: string) => {
+    if (confirm("Are you sure you want to delete this contact?")) {
+      await deleteContact(id);
+      setSelectedIds(new Set([...selectedIds].filter(sid => sid !== id)));
+    }
   };
 
-  const ContactForm = ({ contact, onSubmit, onCancel }: { contact?: Contact | null, onSubmit: (e: React.FormEvent) => void, onCancel: () => void }) => (
-    <form onSubmit={onSubmit} className="flex flex-col h-full">
-      <div className="space-y-6 py-6 flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">First Name</label>
-            <Input required defaultValue={contact?.firstName} placeholder="John" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Last Name</label>
-            <Input required defaultValue={contact?.lastName} placeholder="Doe" />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Phone Number (with Country Code)</label>
-          <Input required defaultValue={contact?.phone} placeholder="+1 555 000 0000" />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Email Address</label>
-          <Input type="email" defaultValue={contact?.email} placeholder="john@example.com" />
-        </div>
-        
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Status</label>
-          <Select defaultValue={contact?.status || "Opted-in"}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Opted-in">Opted-in</SelectItem>
-              <SelectItem value="Opted-out">Opted-out</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+  const handleBulkDelete = async () => {
+    if (confirm(`Delete ${selectedIds.size} contacts?`)) {
+      await bulkAction(Array.from(selectedIds), "delete");
+      setSelectedIds(new Set());
+    }
+  };
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Tags (comma separated)</label>
-          <Input defaultValue={contact?.tags?.join(", ")} placeholder="VIP, Lead, Support" />
-        </div>
+  const handleBulkTags = async (action: "addTags" | "removeTags") => {
+    const tag = prompt(`Enter tag to ${action === 'addTags' ? 'add' : 'remove'}:`);
+    if (tag) {
+      await bulkAction(Array.from(selectedIds), action, { tags: [tag] });
+      setSelectedIds(new Set());
+    }
+  };
 
-        <div className="pt-4 border-t border-[var(--border)]">
-          <h4 className="text-sm font-medium mb-4">Custom Attributes</h4>
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Input placeholder="Key (e.g. Company)" className="flex-1" />
-              <Input placeholder="Value (e.g. Acme)" className="flex-1" />
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await importContacts(file);
+      e.target.value = ''; // Reset
+      alert("Contacts imported successfully!");
+    }
+  };
+
+  const handleExport = async () => {
+    const csv = await exportContacts();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contacts-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+  };
+
+  const handleMerge = async () => {
+    if (selectedIds.size !== 2) {
+      alert("Please select exactly 2 contacts to merge.");
+      return;
+    }
+    const ids = Array.from(selectedIds);
+    const primaryId = prompt(`Merging ${ids[1]} INTO ${ids[0]}.\nType 'YES' to confirm and KEEP ${ids[0]} as primary.`);
+    if (primaryId === 'YES') {
+      await mergeContacts(ids[0], ids[1]);
+      setSelectedIds(new Set());
+      alert("Contacts merged!");
+    }
+  };
+
+  const fetchActivity = async (id: string) => {
+    setLoadingActivity(true);
+    try {
+      const { data } = await api.get(`/contacts/${id}/activity`);
+      setContactActivity(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  const ContactForm = ({ contact, onSubmit, onCancel, showActivity }: { contact?: Contact | null, onSubmit: (e: React.FormEvent, data: any) => void, onCancel: () => void, showActivity?: boolean }) => {
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      const formData = new FormData(e.target as HTMLFormElement);
+      const data = {
+        firstName: formData.get("firstName") as string,
+        lastName: formData.get("lastName") as string,
+        phone: formData.get("phone") as string,
+        email: formData.get("email") as string,
+        status: formData.get("status") as string,
+        tags: (formData.get("tags") as string).split(",").map(t => t.trim()).filter(Boolean),
+      };
+      onSubmit(e, data);
+    };
+
+    const FormContent = (
+      <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <div className="space-y-6 py-6 flex-1 overflow-y-auto px-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">First Name</label>
+              <Input name="firstName" required defaultValue={contact?.firstName || contact?.name || ""} placeholder="John" />
             </div>
-            <Button type="button" variant="outline" size="sm" className="w-full">
-              <Plus className="h-4 w-4 mr-2" /> Add Attribute
-            </Button>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Last Name</label>
+              <Input name="lastName" defaultValue={contact?.lastName || ""} placeholder="Doe" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Phone Number (with Country Code)</label>
+            <Input name="phone" required defaultValue={contact?.phone} placeholder="+1 555 000 0000" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email Address</label>
+            <Input name="email" type="email" defaultValue={contact?.email || ""} placeholder="john@example.com" />
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Status</label>
+            <Select name="status" defaultValue={contact?.status || "OPTED_IN"}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="OPTED_IN">Opted-in</SelectItem>
+                <SelectItem value="OPTED_OUT">Opted-out</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Tags (comma separated)</label>
+            <Input name="tags" defaultValue={contact?.tags?.join(", ")} placeholder="VIP, Lead, Support" />
           </div>
         </div>
-      </div>
-      <SheetFooter className="pt-4 border-t border-[var(--border)] shrink-0">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">Save Contact</Button>
-      </SheetFooter>
-    </form>
-  );
+        <SheetFooter className="pt-4 border-t border-[var(--border)] shrink-0 px-4 sm:px-6">
+          <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button type="submit">Save Contact</Button>
+        </SheetFooter>
+      </form>
+    );
+
+    if (!showActivity) return FormContent;
+
+    return (
+      <Tabs defaultValue="details" className="flex flex-col h-full overflow-hidden">
+        <div className="px-6 pt-4 border-b border-[var(--border)]">
+          <TabsList className="w-full grid grid-cols-2">
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="details" className="flex-1 flex flex-col h-full overflow-hidden m-0">
+          {FormContent}
+        </TabsContent>
+        <TabsContent value="activity" className="flex-1 overflow-y-auto p-6 m-0 bg-[var(--muted)]/20">
+          {loadingActivity ? (
+            <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)]" /></div>
+          ) : contactActivity.length === 0 ? (
+            <p className="text-sm text-center text-[var(--muted-foreground)] py-8">No conversations found.</p>
+          ) : (
+            <div className="space-y-6">
+              {contactActivity.map((conv: any) => (
+                <div key={conv.id} className="relative pl-6 border-l-2 border-[var(--border)] pb-2">
+                  <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-[var(--background)] border-2 border-[var(--primary)]" />
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[var(--foreground)] uppercase tracking-wider">Conversation #{conv.id.substring(0,6)}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{format(new Date(conv.createdAt), "MMM d, yyyy")}</span>
+                  </div>
+                  <div className="space-y-3 bg-[var(--background)] p-3 rounded-md border border-[var(--border)] shadow-sm">
+                    {conv.messages?.map((msg: any) => (
+                      <div key={msg.id} className={`text-sm flex flex-col ${msg.direction === 'OUTBOUND' ? 'items-end' : 'items-start'}`}>
+                        <div className={`px-3 py-1.5 rounded-lg max-w-[85%] ${msg.direction === 'OUTBOUND' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--accent)] text-[var(--foreground)]'}`}>
+                          {msg.content || `[${msg.type}]`}
+                        </div>
+                        <span className="text-[10px] text-[var(--muted-foreground)] mt-1">{format(new Date(msg.createdAt), "h:mm a")}</span>
+                      </div>
+                    ))}
+                    {conv.messages?.length === 0 && <span className="text-xs text-[var(--muted-foreground)]">No messages</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    );
+  };
 
   return (
     <div className="space-y-6">
+      <input 
+        type="file" 
+        accept=".csv" 
+        ref={fileInputRef} 
+        style={{ display: 'none' }} 
+        onChange={handleImport} 
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -179,10 +249,10 @@ export default function ContactsPage() {
           <p className="text-[var(--muted-foreground)]">Manage your audience, create segments, and track engagement.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="flex-1 sm:flex-none">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" /> Export
           </Button>
-          <Button variant="outline" className="flex-1 sm:flex-none">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => fileInputRef.current?.click()}>
             <Upload className="mr-2 h-4 w-4" /> Import CSV
           </Button>
           <Sheet open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -191,13 +261,16 @@ export default function ContactsPage() {
                 <Plus className="mr-2 h-4 w-4" /> Add Contact
               </Button>
             </SheetTrigger>
-            <SheetContent className="flex flex-col sm:max-w-md w-full">
-              <SheetHeader className="shrink-0">
+            <SheetContent className="flex flex-col sm:max-w-md w-full p-0">
+              <SheetHeader className="shrink-0 p-6 pb-0">
                 <SheetTitle>Add New Contact</SheetTitle>
                 <SheetDescription>Create a new contact in your CRM.</SheetDescription>
               </SheetHeader>
               <ContactForm 
-                onSubmit={(e) => { e.preventDefault(); setIsAddOpen(false); }} 
+                onSubmit={async (e, data) => { 
+                  await createContact(data); 
+                  setIsAddOpen(false); 
+                }} 
                 onCancel={() => setIsAddOpen(false)} 
               />
             </SheetContent>
@@ -217,7 +290,7 @@ export default function ContactsPage() {
               className="pl-9 bg-[var(--background)]"
             />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex gap-2 w-full sm:w-auto items-center">
             {selectedIds.size > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -226,15 +299,27 @@ export default function ContactsPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Add Tags</DropdownMenuItem>
-                  <DropdownMenuItem>Remove Tags</DropdownMenuItem>
-                  <DropdownMenuItem className="text-red-500">Delete Selected</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkTags('addTags')}>Add Tags</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkTags('removeTags')}>Remove Tags</DropdownMenuItem>
+                  {selectedIds.size === 2 && (
+                    <DropdownMenuItem onClick={handleMerge}>Merge Contacts</DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem className="text-red-500" onClick={handleBulkDelete}>Delete Selected</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button variant="outline">
-              <Filter className="mr-2 h-4 w-4" /> Filter
-            </Button>
+            
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="OPTED_IN">Opted In</SelectItem>
+                <SelectItem value="OPTED_OUT">Opted Out</SelectItem>
+              </SelectContent>
+            </Select>
+
           </div>
         </div>
 
@@ -244,7 +329,7 @@ export default function ContactsPage() {
             <TableRow>
               <TableHead className="w-12 text-center">
                 <Checkbox 
-                  checked={filteredContacts.length > 0 && selectedIds.size === filteredContacts.length}
+                  checked={contacts.length > 0 && selectedIds.size === contacts.length}
                   onCheckedChange={toggleSelectAll}
                   aria-label="Select all"
                 />
@@ -258,73 +343,85 @@ export default function ContactsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredContacts.map((contact) => (
-              <TableRow key={contact.id} data-state={selectedIds.has(contact.id) ? "selected" : undefined}>
-                <TableCell className="text-center">
-                  <Checkbox 
-                    checked={selectedIds.has(contact.id)}
-                    onCheckedChange={() => toggleSelect(contact.id)}
-                    aria-label={`Select ${contact.firstName}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center font-semibold text-sm shrink-0">
-                      {contact.firstName.charAt(0)}{contact.lastName.charAt(0)}
-                    </div>
-                    <div className="font-medium text-[var(--foreground)]">{contact.firstName} {contact.lastName}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="text-sm flex items-center gap-1.5"><Phone className="h-3 w-3 text-[var(--muted-foreground)]" /> {contact.phone}</div>
-                  <div className="text-xs text-[var(--muted-foreground)] flex items-center gap-1.5 mt-1"><Mail className="h-3 w-3" /> {contact.email}</div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {contact.tags.map((tag, i) => (
-                      <Badge key={i} variant="secondary" className="font-normal text-xs bg-[var(--primary)]/5 text-[var(--primary)] hover:bg-[var(--primary)]/10">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {contact.tags.length === 0 && <span className="text-xs text-[var(--muted-foreground)]">-</span>}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={contact.status === "Opted-in" ? "text-emerald-600 border-emerald-600 bg-emerald-50" : "text-[var(--muted-foreground)]"}>
-                    {contact.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm text-[var(--muted-foreground)]">
-                  {contact.lastActive}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => {
-                        setEditingContact(contact);
-                        setIsEditOpen(true);
-                      }}>
-                        <Edit className="mr-2 h-4 w-4" /> Edit Contact
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDelete(contact.id)} className="text-red-500 focus:text-red-600">
-                        <Trash className="mr-2 h-4 w-4" /> Delete Contact
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)] mx-auto" />
                 </TableCell>
               </TableRow>
-            ))}
-            {filteredContacts.length === 0 && (
+            ) : contacts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center text-[var(--muted-foreground)]">
                   No contacts found.
                 </TableCell>
               </TableRow>
+            ) : (
+              contacts.map((contact) => (
+                <TableRow key={contact.id} data-state={selectedIds.has(contact.id) ? "selected" : undefined}>
+                  <TableCell className="text-center">
+                    <Checkbox 
+                      checked={selectedIds.has(contact.id)}
+                      onCheckedChange={() => toggleSelect(contact.id)}
+                      aria-label={`Select ${contact.firstName}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center font-semibold text-sm shrink-0 uppercase">
+                        {(contact.firstName?.[0] || contact.name?.[0] || "U")}
+                      </div>
+                      <div className="font-medium text-[var(--foreground)]">
+                        {contact.firstName || contact.name || "Unknown"} {contact.lastName || ""}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm flex items-center gap-1.5"><Phone className="h-3 w-3 text-[var(--muted-foreground)]" /> {contact.phone}</div>
+                    {contact.email && (
+                      <div className="text-xs text-[var(--muted-foreground)] flex items-center gap-1.5 mt-1"><Mail className="h-3 w-3" /> {contact.email}</div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {contact.tags.map((tag, i) => (
+                        <Badge key={i} variant="secondary" className="font-normal text-xs bg-[var(--primary)]/5 text-[var(--primary)] hover:bg-[var(--primary)]/10">
+                          {tag}
+                        </Badge>
+                      ))}
+                      {(!contact.tags || contact.tags.length === 0) && <span className="text-xs text-[var(--muted-foreground)]">-</span>}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={contact.status === "OPTED_IN" ? "text-emerald-600 border-emerald-600 bg-emerald-50" : "text-[var(--muted-foreground)]"}>
+                      {contact.status === "OPTED_IN" ? "Opted-in" : "Opted-out"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-[var(--muted-foreground)]">
+                    {contact.lastActive ? format(new Date(contact.lastActive), "PPp") : "-"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          setEditingContact(contact);
+                          setIsEditOpen(true);
+                          fetchActivity(contact.id);
+                        }}>
+                          <Edit className="mr-2 h-4 w-4" /> Edit Contact
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDelete(contact.id)} className="text-red-500 focus:text-red-600">
+                          <Trash className="mr-2 h-4 w-4" /> Delete Contact
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
@@ -332,27 +429,48 @@ export default function ContactsPage() {
         <div className="p-4 border-t border-[var(--border)] flex items-center justify-between text-sm text-[var(--muted-foreground)] bg-[var(--accent)]/20">
           <div>
             {selectedIds.size > 0 
-              ? `${selectedIds.size} of ${filteredContacts.length} row(s) selected.`
-              : `Showing ${filteredContacts.length} entries`
+              ? `${selectedIds.size} of ${total} row(s) selected.`
+              : `Showing ${contacts.length} of ${total} entries`
             }
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>Previous</Button>
-            <Button variant="outline" size="sm" disabled>Next</Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={page <= 1}
+              onClick={() => fetchContacts({ page: page - 1, limit, search, status: statusFilter })}
+            >
+              Previous
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={page >= totalPages}
+              onClick={() => fetchContacts({ page: page + 1, limit, search, status: statusFilter })}
+            >
+              Next
+            </Button>
           </div>
         </div>
       </Card>
 
       {/* Edit Contact Sheet */}
       <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <SheetContent className="flex flex-col sm:max-w-md w-full">
-          <SheetHeader className="shrink-0">
+        <SheetContent className="flex flex-col sm:max-w-md w-full p-0">
+          <SheetHeader className="shrink-0 p-6 pb-0">
             <SheetTitle>Edit Contact</SheetTitle>
-            <SheetDescription>Update information for {editingContact?.firstName} {editingContact?.lastName}.</SheetDescription>
+            <SheetDescription>Update information for {editingContact?.firstName || editingContact?.name}.</SheetDescription>
           </SheetHeader>
           <ContactForm 
             contact={editingContact}
-            onSubmit={(e) => { e.preventDefault(); setIsEditOpen(false); setEditingContact(null); }} 
+            showActivity={true}
+            onSubmit={async (e, data) => { 
+              if (editingContact) {
+                await updateContact(editingContact.id, data);
+              }
+              setIsEditOpen(false); 
+              setEditingContact(null); 
+            }} 
             onCancel={() => { setIsEditOpen(false); setEditingContact(null); }} 
           />
         </SheetContent>

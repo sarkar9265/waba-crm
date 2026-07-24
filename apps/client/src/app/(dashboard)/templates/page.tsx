@@ -1,73 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   Button, Input, Badge, Card,
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@algo-matrix/ui";
-import { Search, Plus, MoreHorizontal, FileText, CheckCircle2, AlertCircle, Clock } from "lucide-react";
-
-type Template = {
-  id: string;
-  name: string;
-  category: "MARKETING" | "UTILITY" | "AUTHENTICATION";
-  language: string;
-  status: "APPROVED" | "PENDING" | "REJECTED";
-  lastUpdated: string;
-};
+import { Search, Plus, MoreHorizontal, FileText, CheckCircle2, AlertCircle, Clock, Loader2, RefreshCw, Trash } from "lucide-react";
+import { useTemplatesStore, Template } from "@/store/useTemplatesStore";
+import { format } from "date-fns";
 
 export default function TemplatesPage() {
-  const [templates] = useState<Template[]>([
-    {
-      id: "t_1",
-      name: "welcome_message_v1",
-      category: "MARKETING",
-      language: "en_US",
-      status: "APPROVED",
-      lastUpdated: "Oct 12, 2023"
-    },
-    {
-      id: "t_2",
-      name: "order_update_receipt",
-      category: "UTILITY",
-      language: "en_US",
-      status: "APPROVED",
-      lastUpdated: "Oct 15, 2023"
-    },
-    {
-      id: "t_3",
-      name: "holiday_promo_2024",
-      category: "MARKETING",
-      language: "es",
-      status: "PENDING",
-      lastUpdated: "2 hours ago"
-    },
-    {
-      id: "t_4",
-      name: "account_verification_otp",
-      category: "AUTHENTICATION",
-      language: "en_US",
-      status: "REJECTED",
-      lastUpdated: "Yesterday"
-    }
-  ]);
-
+  const { templates, total, page, limit, totalPages, loading, fetchTemplates, deleteTemplate, syncTemplate } = useTemplatesStore();
   const [search, setSearch] = useState("");
 
-  const filteredTemplates = templates.filter(t => 
-    t.name.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    fetchTemplates({ page: 1, limit, search });
+  }, [search]);
+
+  const handleDelete = async (id: string) => {
+    if (confirm("Are you sure you want to delete this template?")) {
+      await deleteTemplate(id);
+    }
+  };
+
+  const handleSync = async (id: string) => {
+    await syncTemplate(id);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "APPROVED":
         return <Badge variant="outline" className="text-emerald-600 border-emerald-600 bg-emerald-50"><CheckCircle2 className="h-3 w-3 mr-1" /> Approved</Badge>;
       case "PENDING":
+      case "SUBMITTED":
         return <Badge variant="outline" className="text-amber-600 border-amber-600 bg-amber-50"><Clock className="h-3 w-3 mr-1" /> Pending</Badge>;
       case "REJECTED":
         return <Badge variant="outline" className="text-red-600 border-red-600 bg-red-50"><AlertCircle className="h-3 w-3 mr-1" /> Rejected</Badge>;
+      case "DRAFT":
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -128,43 +99,79 @@ export default function TemplatesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTemplates.map((template) => (
-              <TableRow key={template.id}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-[var(--muted-foreground)]" />
-                    <span className="font-medium">{template.name}</span>
-                  </div>
-                </TableCell>
-                <TableCell>{getCategoryBadge(template.category)}</TableCell>
-                <TableCell className="text-[var(--muted-foreground)]">{template.language}</TableCell>
-                <TableCell>{getStatusBadge(template.status)}</TableCell>
-                <TableCell className="text-sm text-[var(--muted-foreground)]">{template.lastUpdated}</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                      <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                      <DropdownMenuItem className="text-red-500">Delete</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)] mx-auto" />
                 </TableCell>
               </TableRow>
-            ))}
-            {filteredTemplates.length === 0 && (
+            ) : templates.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center text-[var(--muted-foreground)]">
                   No templates found.
                 </TableCell>
               </TableRow>
+            ) : (
+              templates.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-[var(--muted-foreground)]" />
+                      <span className="font-medium">{template.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{getCategoryBadge(template.category)}</TableCell>
+                  <TableCell className="text-[var(--muted-foreground)]">{template.language}</TableCell>
+                  <TableCell>{getStatusBadge(template.status)}</TableCell>
+                  <TableCell className="text-sm text-[var(--muted-foreground)]">
+                    {format(new Date(template.updatedAt), "PPp")}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleSync(template.id)}>
+                          <RefreshCw className="h-4 w-4 mr-2" /> Sync with Meta
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-500" onClick={() => handleDelete(template.id)}>
+                          <Trash className="h-4 w-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
+
+        <div className="p-4 border-t border-[var(--border)] flex items-center justify-between text-sm text-[var(--muted-foreground)] bg-[var(--accent)]/20">
+          <div>
+            Showing {templates.length} of {total} entries
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={page <= 1}
+              onClick={() => fetchTemplates({ page: page - 1, limit, search })}
+            >
+              Previous
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={page >= totalPages}
+              onClick={() => fetchTemplates({ page: page + 1, limit, search })}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </Card>
     </div>
   );

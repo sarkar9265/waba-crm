@@ -5,6 +5,7 @@ import { Button, Card, CardHeader, CardTitle, CardContent, Input } from "@algo-m
 import { Bot, Save, Sparkles, MessageSquareQuote, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/store/useAuthStore";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 
 export default function AiChatbotPage() {
   const [isEnabled, setIsEnabled] = useState(false);
@@ -16,19 +17,12 @@ export default function AiChatbotPage() {
   useEffect(() => {
     async function fetchConfig() {
       try {
-        const res = await fetch("http://localhost:3001/api/ai/config", {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setIsEnabled(data.aiEnabled || false);
-          setSystemPrompt(
-            data.aiSystemPrompt || 
-            "You are a helpful customer support assistant for Algo Matrix. You answer questions concisely and politely. If you don't know the answer, you offer to transfer the user to a human agent."
-          );
-        }
+        const { data } = await api.get("/ai/config");
+        setIsEnabled(data.aiEnabled || false);
+        setSystemPrompt(
+          data.aiSystemPrompt || 
+          "You are a helpful customer support assistant for Algo Matrix. You answer questions concisely and politely. If you don't know the answer, you offer to transfer the user to a human agent."
+        );
       } catch (error) {
         console.error("Failed to fetch AI config", error);
       } finally {
@@ -42,19 +36,8 @@ export default function AiChatbotPage() {
     if (!token) return;
     setIsSaving(true);
     try {
-      const res = await fetch("http://localhost:3001/api/ai/config", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ aiEnabled: isEnabled, aiSystemPrompt: systemPrompt })
-      });
-      if (res.ok) {
-        toast.success("AI Configuration saved successfully!");
-      } else {
-        toast.error("Failed to save configuration.");
-      }
+      await api.post("/ai/config", { aiEnabled: isEnabled, aiSystemPrompt: systemPrompt });
+      toast.success("AI Configuration saved successfully!");
     } catch (error) {
       toast.error("An error occurred while saving.");
     } finally {

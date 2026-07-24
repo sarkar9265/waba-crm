@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Button, Input, Card, Textarea,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@algo-matrix/ui";
-import { ArrowLeft, Send, Image as ImageIcon, Smile, Paperclip } from "lucide-react";
+import { ArrowLeft, Send, Image as ImageIcon, Smile, Paperclip, FileText, Loader2 } from "lucide-react";
+import { useTemplatesStore, TemplateComponent } from "@/store/useTemplatesStore";
 
 export default function CreateTemplatePage() {
+  const router = useRouter();
+  const { createTemplate } = useTemplatesStore();
+  
   const [name, setName] = useState("");
   const [category, setCategory] = useState("MARKETING");
   const [language, setLanguage] = useState("en_US");
@@ -17,6 +22,52 @@ export default function CreateTemplatePage() {
   const [headerText, setHeaderText] = useState("");
   const [bodyText, setBodyText] = useState("Hi {{1}},\n\nThanks for choosing us! Your order {{2}} is confirmed.");
   const [footerText, setFooterText] = useState("Reply STOP to unsubscribe");
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (isDraft: boolean) => {
+    if (!name.trim()) return alert("Template name is required.");
+    if (!bodyText.trim()) return alert("Template body is required.");
+
+    setSubmitting(true);
+
+    const components: TemplateComponent[] = [];
+
+    if (headerType !== "NONE") {
+      components.push({
+        type: "HEADER",
+        format: headerType as any,
+        text: headerType === "TEXT" ? headerText : undefined
+      });
+    }
+
+    components.push({
+      type: "BODY",
+      text: bodyText
+    });
+
+    if (footerText) {
+      components.push({
+        type: "FOOTER",
+        text: footerText
+      });
+    }
+
+    try {
+      await createTemplate({
+        name,
+        category: category as any,
+        language,
+        status: isDraft ? "DRAFT" : "SUBMITTED",
+        components
+      });
+      router.push("/templates");
+    } catch (e) {
+      alert("Failed to create template");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="h-[calc(100vh-8rem)] -mx-6 -mt-6 -mb-6 flex overflow-hidden border-t border-[var(--border)]">
@@ -46,7 +97,7 @@ export default function CreateTemplatePage() {
                   <Input 
                     placeholder="e.g. holiday_promo_2024" 
                     value={name} 
-                    onChange={e => setName(e.target.value)} 
+                    onChange={e => setName(e.target.value.replace(/[^a-z0-9_]/g, ''))} 
                     className="lowercase"
                   />
                   <p className="text-xs text-[var(--muted-foreground)]">Use only lowercase letters, numbers, and underscores.</p>
@@ -132,6 +183,7 @@ export default function CreateTemplatePage() {
                     value={bodyText} 
                     onChange={e => setBodyText(e.target.value)}
                     className="min-h-[150px] resize-none"
+                    maxLength={1024}
                   />
                   <div className="flex gap-2 text-xs text-[var(--muted-foreground)]">
                     <span>Formatting:</span>
@@ -164,8 +216,13 @@ export default function CreateTemplatePage() {
             </Card>
 
             <div className="flex justify-end gap-4 pt-4">
-              <Button variant="outline" size="lg">Save Draft</Button>
-              <Button size="lg">Submit for Approval</Button>
+              <Button variant="outline" size="lg" disabled={submitting} onClick={() => handleSubmit(true)}>
+                Save Draft
+              </Button>
+              <Button size="lg" disabled={submitting} onClick={() => handleSubmit(false)}>
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Submit for Approval
+              </Button>
             </div>
 
           </div>

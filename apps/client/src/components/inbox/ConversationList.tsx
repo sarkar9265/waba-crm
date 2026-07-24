@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Filter, MoreVertical, MessageSquare } from "lucide-react";
-import { Input, Button, ScrollArea, Avatar, AvatarFallback, AvatarImage, Badge } from "@algo-matrix/ui";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Search, MoreVertical, MessageSquare, Loader2 } from "lucide-react";
+import { Input, Button, ScrollArea, Avatar, AvatarFallback, AvatarImage, Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@algo-matrix/ui";
+import { useChatStore, Conversation } from "@/store/useChatStore";
+import { format, isToday, isYesterday } from "date-fns";
 
 type ConversationListProps = {
   activeId: string | null;
@@ -11,15 +13,81 @@ type ConversationListProps = {
 
 export function ConversationList({ activeId, onSelect }: ConversationListProps) {
   const [filter, setFilter] = useState<"All" | "Unread">("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const observerTarget = useRef(null);
 
-  const conversations = [
-    { id: "c_1", name: "John Doe", phone: "+1 555 123 4567", lastMessage: "Thanks for the update!", timestamp: "10:42 AM", unread: 2 },
-    { id: "c_2", name: "Sarah Smith", phone: "+1 555 987 6543", lastMessage: "When will my order arrive?", timestamp: "Yesterday", unread: 0 },
-    { id: "c_3", name: "+1 555 444 3333", phone: "+1 555 444 3333", lastMessage: "I need help with my account.", timestamp: "Yesterday", unread: 0 },
-    { id: "c_4", name: "Mike Johnson", phone: "+1 555 222 1111", lastMessage: "Sounds good, see you then.", timestamp: "Monday", unread: 0 },
-  ];
+  const {
+    conversations,
+    loadingConversations,
+    hasMoreConversations,
+    fetchConversations,
+    fetchMoreConversations,
+    users,
+    fetchUsers,
+    bulkUpdateConversations
+  } = useChatStore();
 
-  const filtered = conversations.filter(c => filter === "All" || (filter === "Unread" && c.unread > 0));
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkAssign = (userId: string) => {
+    if (selectedIds.length > 0) {
+      bulkUpdateConversations(selectedIds, { assignedToId: userId === "unassigned" ? null : userId });
+      setSelectedIds([]);
+      setIsBulkMode(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchConversations({ status: filter === "All" ? undefined : filter });
+  }, [filter, fetchConversations]);
+
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const target = entries[0];
+      if (target.isIntersecting && hasMoreConversations && !loadingConversations) {
+        fetchMoreConversations({ status: filter === "All" ? undefined : filter });
+      }
+    },
+    [hasMoreConversations, loadingConversations, fetchMoreConversations, filter]
+  );
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(handleObserver, {
+      root: null,
+      rootMargin: "20px",
+      threshold: 1.0,
+    });
+    
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    
+    return () => observer.disconnect();
+  }, [handleObserver]);
+
+  const filtered = conversations.filter(c => {
+    const matchSearch = c.contact?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        c.contact?.phone?.includes(searchQuery);
+    const matchFilter = filter === "All" || (filter === "Unread" && (c.unreadCount || 0) > 0);
+    return matchSearch && matchFilter;
+  });
+
+  const formatTimestamp = (dateString: string) => {
+    const date = new Date(dateString);
+    if (isToday(date)) return format(date, "h:mm a");
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MM/dd/yyyy");
+  };
 
   return (
     <div className="flex flex-col h-full border-r border-[var(--border)] bg-[var(--background)]">
@@ -33,67 +101,131 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
-          <Input placeholder="Search messages..." className="pl-9 bg-[var(--muted)]/50 border-none" />
+          <Input 
+            placeholder="Search messages..." 
+            className="pl-9 bg-[var(--muted)]/50 border-none"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 p-2 px-4 border-b border-[var(--border)]">
-        <Button 
-          variant={filter === "All" ? "default" : "ghost"} 
-          size="sm" 
-          className="rounded-full h-8"
-          onClick={() => setFilter("All")}
-        >
-          All
-        </Button>
-        <Button 
-          variant={filter === "Unread" ? "default" : "ghost"} 
-          size="sm" 
-          className="rounded-full h-8"
-          onClick={() => setFilter("Unread")}
-        >
-          Unread
-        </Button>
+      {/* Filters & Bulk Mode */}
+      <div className="flex flex-col gap-2 p-2 px-4 border-b border-[var(--border)]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button 
+              variant={filter === "All" ? "default" : "ghost"} 
+              size="sm" 
+              className="rounded-full h-8"
+              onClick={() => setFilter("All")}
+            >
+              All
+            </Button>
+            <Button 
+              variant={filter === "Unread" ? "default" : "ghost"} 
+              size="sm" 
+              className="rounded-full h-8"
+              onClick={() => setFilter("Unread")}
+            >
+              Unread
+            </Button>
+          </div>
+          <Button 
+            variant={isBulkMode ? "secondary" : "ghost"} 
+            size="sm" 
+            className="rounded-full h-8 text-xs"
+            onClick={() => {
+              setIsBulkMode(!isBulkMode);
+              setSelectedIds([]);
+            }}
+          >
+            {isBulkMode ? "Cancel Bulk" : "Bulk Select"}
+          </Button>
+        </div>
+
+        {isBulkMode && (
+          <div className="flex items-center gap-2 bg-[var(--accent)] p-2 rounded-md justify-between">
+            <span className="text-xs font-medium">{selectedIds.length} selected</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setSelectedIds(filtered.map(c => c.id))}>Select All</Button>
+              <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => handleBulkAssign("unassigned")} disabled={selectedIds.length === 0}>Unassign</Button>
+              <Select onValueChange={handleBulkAssign} disabled={selectedIds.length === 0}>
+                <SelectTrigger className="h-7 text-xs w-[120px]">
+                  <SelectValue placeholder="Assign To" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users?.map((u: any) => (
+                    <SelectItem key={u.id} value={u.id} className="text-xs">{u.name || u.email}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* List */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col p-2 space-y-1">
-          {filtered.map((chat) => (
-            <button
-              key={chat.id}
-              onClick={() => onSelect(chat.id)}
-              className={`flex items-start gap-3 p-3 text-left rounded-lg transition-colors hover:bg-[var(--accent)] ${activeId === chat.id ? 'bg-[var(--accent)] ring-1 ring-[var(--border)]' : ''}`}
-            >
-              <Avatar className="h-10 w-10 shrink-0">
-                <AvatarImage src="" />
-                <AvatarFallback className={activeId === chat.id ? "bg-[var(--primary)] text-white" : ""}>
-                  {chat.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium truncate text-[var(--foreground)]">{chat.name}</span>
-                  <span className={`text-xs whitespace-nowrap ml-2 ${chat.unread > 0 ? 'text-[var(--primary)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
-                    {chat.timestamp}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className={`text-sm truncate ${chat.unread > 0 ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
-                    {chat.lastMessage}
-                  </p>
-                  {chat.unread > 0 && (
-                    <Badge variant="default" className="h-5 w-5 rounded-full p-0 flex items-center justify-center shrink-0">
-                      {chat.unread}
-                    </Badge>
-                  )}
-                </div>
+          {filtered.map((chat) => {
+            const lastMessage = chat.messages?.[0];
+            const lastMessageContent = lastMessage?.type === 'text' ? lastMessage.content : `[${lastMessage?.type || 'Media'}]`;
+            
+            return (
+              <div key={chat.id} className="flex items-center gap-2">
+                {isBulkMode && (
+                  <div className="pl-2">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.includes(chat.id)}
+                      onChange={() => toggleSelection(chat.id)}
+                      className="h-4 w-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => !isBulkMode && onSelect(chat.id)}
+                  className={`flex-1 flex items-start gap-3 p-3 text-left rounded-lg transition-colors hover:bg-[var(--accent)] ${activeId === chat.id ? 'bg-[var(--accent)] ring-1 ring-[var(--border)]' : ''}`}
+                >
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={chat.contact?.avatarUrl || ""} />
+                    <AvatarFallback className={activeId === chat.id ? "bg-[var(--primary)] text-white" : ""}>
+                      {(chat.contact?.name || chat.contact?.phone || "U").charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium truncate text-[var(--foreground)]">{chat.contact?.name || chat.contact?.phone}</span>
+                      <span className={`text-xs whitespace-nowrap ml-2 ${(chat.unreadCount || 0) > 0 ? 'text-[var(--primary)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
+                        {formatTimestamp(chat.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-sm truncate ${(chat.unreadCount || 0) > 0 ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
+                        {lastMessageContent || "No messages yet"}
+                      </p>
+                      {(chat.unreadCount || 0) > 0 && (
+                        <Badge variant="default" className="h-5 w-5 rounded-full p-0 flex items-center justify-center shrink-0">
+                          {chat.unreadCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </button>
               </div>
-            </button>
-          ))}
+            )
+          })}
 
-          {filtered.length === 0 && (
+          {loadingConversations && (
+            <div className="flex justify-center p-4">
+              <Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)]" />
+            </div>
+          )}
+
+          <div ref={observerTarget} className="h-4 w-full" />
+
+          {!loadingConversations && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <MessageSquare className="h-10 w-10 text-[var(--muted-foreground)] mb-3 opacity-20" />
               <p className="text-[var(--muted-foreground)] text-sm font-medium">No conversations found.</p>
@@ -102,5 +234,6 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
         </div>
       </ScrollArea>
     </div>
+
   );
 }

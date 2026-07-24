@@ -1,44 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent, Button, Skeleton } from "@algo-matrix/ui";
-import { MessageSquare, Users, Zap, ArrowRight, Bot } from "lucide-react";
+import { MessageSquare, Users, Megaphone, ArrowRight, Activity, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { useAnalyticsStore } from "@/store/useAnalyticsStore";
 
 export default function DashboardHome() {
-  const [isLoading, setIsLoading] = useState(true);
+  const { metrics, charts, campaigns, agents, loading, fetchDashboardData } = useAnalyticsStore();
 
   useEffect(() => {
-    // Simulate fetching data
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
-  const chartData = [
-    { name: 'Mon', messages: 400, inbound: 240, outbound: 160 },
-    { name: 'Tue', messages: 300, inbound: 139, outbound: 161 },
-    { name: 'Wed', messages: 200, inbound: 98, outbound: 102 },
-    { name: 'Thu', messages: 278, inbound: 150, outbound: 128 },
-    { name: 'Fri', messages: 189, inbound: 80, outbound: 109 },
-    { name: 'Sat', messages: 239, inbound: 110, outbound: 129 },
-    { name: 'Sun', messages: 349, inbound: 180, outbound: 169 },
-  ];
-
-  const metrics = [
-    { title: "Active Conversations", value: "142", icon: MessageSquare, trend: "+12%" },
-    { title: "Total Contacts", value: "8,234", icon: Users, trend: "+4%" },
-    { title: "Automated Replies", value: "1,492", icon: Zap, trend: "+23%" },
-    { title: "AI Chatbot Sessions", value: "483", icon: Bot, trend: "+18%" },
-  ];
+  const summaryCards = metrics ? [
+    { title: "Messages Today", value: metrics.messagesToday, icon: MessageSquare, trend: "Daily metric" },
+    { title: "Active Conversations", value: metrics.activeConversations, icon: Activity, trend: "Currently open" },
+    { title: "Total Contacts", value: metrics.totalContacts, icon: Users, trend: "In database" },
+    { title: "Active Campaigns", value: metrics.activeCampaigns, icon: Megaphone, trend: "Running or paused" },
+  ] : [];
 
   const container = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
+      transition: { staggerChildren: 0.1 }
     }
   };
 
@@ -60,7 +48,7 @@ export default function DashboardHome() {
         animate="show"
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
       >
-        {isLoading
+        {loading || !metrics
           ? Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="overflow-hidden">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -73,20 +61,20 @@ export default function DashboardHome() {
                 </CardContent>
               </Card>
             ))
-          : metrics.map((metric) => (
-              <motion.div key={metric.title} variants={item}>
+          : summaryCards.map((card) => (
+              <motion.div key={card.title} variants={item}>
                 <Card className="hover:border-[var(--primary)]/50 transition-colors overflow-hidden relative group">
                   <div className="absolute inset-0 bg-gradient-to-r from-[var(--primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
                     <CardTitle className="text-sm font-medium">
-                      {metric.title}
+                      {card.title}
                     </CardTitle>
-                    <metric.icon className="h-4 w-4 text-[var(--primary)]" />
+                    <card.icon className="h-4 w-4 text-[var(--primary)]" />
                   </CardHeader>
                   <CardContent className="relative z-10">
-                    <div className="text-2xl font-bold">{metric.value}</div>
-                    <p className="text-xs text-[var(--primary)] font-medium flex items-center mt-1">
-                      {metric.trend} from last month
+                    <div className="text-2xl font-bold">{card.value.toLocaleString()}</div>
+                    <p className="text-xs text-[var(--muted-foreground)] font-medium flex items-center mt-1">
+                      {card.trend}
                     </p>
                   </CardContent>
                 </Card>
@@ -95,30 +83,48 @@ export default function DashboardHome() {
       </motion.div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4 hover:shadow-md transition-shadow">
+        <Card className="col-span-4 hover:shadow-md transition-shadow flex flex-col">
           <CardHeader>
-            <CardTitle>Recent Messages</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" /> Agent Leaderboard
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 p-3 rounded-lg hover:bg-[var(--accent)] transition-colors cursor-pointer border border-transparent hover:border-[var(--border)]">
-                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--primary)]/20 to-[var(--primary)]/10 flex items-center justify-center">
-                    <span className="text-[var(--primary)] font-semibold text-sm">+{i}</span>
+          <CardContent className="flex-1 flex flex-col">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : agents.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-[var(--muted-foreground)]">
+                No agent data available.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {agents.map((agent, i) => (
+                  <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-[var(--accent)]/30 border border-[var(--border)]">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--primary)] to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                      #{i + 1}
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-sm font-semibold leading-none">{agent.name}</p>
+                      <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                        {agent.solved} conversations solved
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-emerald-600">{agent.csat}%</div>
+                      <div className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider">CSAT</div>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-hidden">
-                    <p className="text-sm font-medium leading-none">Customer {i}</p>
-                    <p className="text-sm text-[var(--muted-foreground)] truncate mt-1">
-                      Hi, I wanted to ask about the pricing for...
-                    </p>
-                  </div>
-                  <div className="text-xs text-[var(--muted-foreground)]">10m ago</div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+            <div className="mt-auto pt-4">
+              <Button variant="link" className="px-0 flex items-center gap-2">
+                View all agents <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button variant="link" className="mt-4 px-0 flex items-center gap-2">
-              View all messages <ArrowRight className="h-4 w-4" />
-            </Button>
           </CardContent>
         </Card>
 
@@ -127,34 +133,56 @@ export default function DashboardHome() {
             <CardTitle>Active Campaigns</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="rounded-lg border border-[var(--border)] p-4 relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-1 h-full bg-[var(--primary)]" />
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-semibold text-sm">Summer Promo Broadcast</h4>
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded-full">
-                    Sending
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">Target: 5,000 contacts</p>
-                
-                <div className="mt-4">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Progress</span>
-                    <span className="font-medium text-[var(--primary)]">65%</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-[var(--secondary)] rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: "65%" }}
-                      transition={{ duration: 1, delay: 0.5 }}
-                      className="h-full bg-[var(--primary)]" 
-                    />
-                  </div>
-                </div>
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
               </div>
-            </div>
-            <Button variant="outline" className="w-full mt-4">Create Campaign</Button>
+            ) : campaigns.length === 0 ? (
+              <div className="h-32 flex flex-col items-center justify-center text-center text-[var(--muted-foreground)]">
+                <Megaphone className="h-8 w-8 mb-2 opacity-50" />
+                <p>No active campaigns.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {campaigns.map(c => {
+                  const target = Array.isArray(c.audience?.tags) ? c.audience.tags.join(', ') : 'All Contacts';
+                  const total = c.sent + c.failed;
+                  const progress = total > 0 ? (c.sent / total) * 100 : 0;
+                  
+                  return (
+                    <div key={c.id} className="rounded-lg border border-[var(--border)] p-4 relative overflow-hidden group hover:border-[var(--primary)] transition-colors">
+                      <div className={`absolute top-0 left-0 w-1 h-full ${c.status === 'RUNNING' ? 'bg-blue-500' : 'bg-amber-500'}`} />
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-semibold text-sm truncate pr-2">{c.name}</h4>
+                        <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${c.status === 'RUNNING' ? 'text-blue-600 bg-blue-100' : 'text-amber-600 bg-amber-100'}`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--muted-foreground)]">Target: {target}</p>
+                      
+                      <div className="mt-4">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Sent: {c.sent} / Failed: {c.failed}</span>
+                          <span className="font-medium text-[var(--primary)]">{Math.round(progress)}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-[var(--secondary)] rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${progress}%` }}
+                            transition={{ duration: 1, delay: 0.2 }}
+                            className="h-full bg-[var(--primary)]" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <Link href="/campaigns/create" passHref>
+              <Button variant="outline" className="w-full mt-4">Create Campaign</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -162,51 +190,63 @@ export default function DashboardHome() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Messages by Day</CardTitle>
+            <CardTitle>Messages by Day (Last 7 Days)</CardTitle>
           </CardHeader>
           <CardContent className="pl-0">
             <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <RechartsTooltip 
-                    contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
-                    itemStyle={{ color: 'var(--foreground)' }}
-                  />
-                  <Area type="monotone" dataKey="messages" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorMessages)" />
-                </AreaChart>
-              </ResponsiveContainer>
+              {loading ? (
+                <div className="h-full w-full flex items-center justify-center pl-8">
+                  <Skeleton className="h-[250px] w-full" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={charts} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                    />
+                    <Area type="monotone" dataKey="messages" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorMessages)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader>
-            <CardTitle>Message Types (Outbound vs Inbound)</CardTitle>
+            <CardTitle>Message Types (Inbound vs Outbound)</CardTitle>
           </CardHeader>
           <CardContent className="pl-0">
             <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <RechartsTooltip 
-                    contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
-                    itemStyle={{ color: 'var(--foreground)' }}
-                  />
-                  <Bar dataKey="inbound" fill="var(--secondary)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="outbound" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {loading ? (
+                <div className="h-full w-full flex items-center justify-center pl-8">
+                  <Skeleton className="h-[250px] w-full" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={charts} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                    />
+                    <Bar dataKey="inbound" fill="var(--secondary)" radius={[4, 4, 0, 0]} name="Inbound" />
+                    <Bar dataKey="outbound" fill="var(--primary)" radius={[4, 4, 0, 0]} name="Outbound" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
