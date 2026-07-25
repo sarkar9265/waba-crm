@@ -34,8 +34,9 @@ async function bootstrap() {
         return callback(null, true);
       }
       const allowedOrigins = [
-        'http://localhost:3000',
-        'http://localhost:3002',
+        'http://localhost:4000',
+        'http://localhost:4001',
+        'http://localhost:4002',
         'https://algomatrixai.com',
         'https://www.algomatrixai.com'
       ];
