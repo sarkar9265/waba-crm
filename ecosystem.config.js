@@ -11,20 +11,46 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3001,
+        PORT: 4001,
       },
     },
     {
       name: 'waba-client',
       script: 'pnpm',
       args: '--filter client run start',
-      instances: 1, // Next.js standalone handles its own clustering usually, or run 1 instance per PM2
+      instances: 1, // Next.js standalone handles its own clustering usually
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3002,
+        PORT: 4000,
+      },
+    },
+    {
+      name: 'waba-admin',
+      script: 'pnpm',
+      args: '--filter admin run start',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 4002,
+      },
+    },
+    {
+      name: 'waba-worker',
+      script: 'pnpm',
+      args: '--filter worker run start:prod',
+      instances: 'max',
+      exec_mode: 'cluster',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
       },
     },
   ],
