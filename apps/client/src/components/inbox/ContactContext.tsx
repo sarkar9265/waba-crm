@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage, Button, Badge, ScrollArea, Select,
 import { Phone, Mail, MapPin, Building, Clock, Tag, X, User, Flag, Archive, Star, Plus } from "lucide-react";
 import { useChatStore } from "@/store/useChatStore";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 export function ContactContext({ activeId, onClose }: { activeId: string | null, onClose: () => void }) {
   const { conversations, updateConversation, users, fetchUsers } = useChatStore();
@@ -37,6 +38,12 @@ export function ContactContext({ activeId, onClose }: { activeId: string | null,
   
   const handleAssigneeChange = (assignedToId: string) => {
     updateConversation(activeId, { assignedToId: assignedToId === "unassigned" ? null : assignedToId });
+    const user = users.find(u => u.id === assignedToId);
+    if (assignedToId === "unassigned") {
+      toast.info("Conversation unassigned");
+    } else {
+      toast.success(`Conversation assigned to ${user?.name || user?.email || 'Agent'}`);
+    }
   };
 
   const toggleArchive = () => {

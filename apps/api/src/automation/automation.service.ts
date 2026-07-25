@@ -109,60 +109,151 @@ export class AutomationService {
     let keepGoing = true;
 
     while (keepGoing) {
-      // Find edge going out of current node
-      const edge = edges.find(e => e.source === currentNodeId);
-      if (!edge) {
-        keepGoing = false;
-        break; // End of workflow
-      }
-
-      // Find next node
-      const nextNode = nodes.find(n => n.id === edge.target);
-      if (!nextNode) {
+      const currentNode = nodes.find(n => n.id === currentNodeId);
+      if (!currentNode) {
         keepGoing = false;
         break;
       }
+      
+      let nextHandle: string | undefined = undefined;
 
-      // Execute next node
-      await this.executeActionNode(nextNode, phoneNumberId, context);
-      currentNodeId = nextNode.id;
+      // Execute current node if it's not the trigger node
+      // Trigger node is executed implicitly just by starting
+      if (currentNode.type !== 'triggerNode') {
+        const result = await this.executeNode(currentNode, phoneNumberId, context);
+        if (result?.stop) {
+          keepGoing = false;
+          break;
+        }
+        if (result?.nextHandle) {
+          nextHandle = result.nextHandle;
+        }
+      }
+
+      // Find edge going out of current node
+      let edge: any;
+      if (nextHandle) {
+        edge = edges.find(e => e.source === currentNodeId && e.sourceHandle === nextHandle);
+      } else {
+        // If no specific handle returned, just grab the first edge out (for linear nodes)
+        edge = edges.find(e => e.source === currentNodeId);
+      }
+
+      if (!edge) {
+        keepGoing = false;
+        break; // End of workflow branch
+      }
+
+      // Set next node
+      currentNodeId = edge.target;
     }
   }
 
-  private async executeActionNode(node: any, phoneNumberId: string, context: any) {
-    if (node.type !== 'actionNode') return;
+  private async executeNode(node: any, phoneNumberId: string, context: any): Promise<{ stop?: boolean, nextHandle?: string } | void> {
     const data = node.data;
     const clientId = context.conversation.clientId;
 
     try {
-      if (data.actionType === 'reply') {
-        const text = data.text || '';
-        await this.sendWhatsAppMessage(phoneNumberId, context.contact.phone, text);
-        await this.saveAndEmitMessage(clientId, context.conversation.id, text);
-      } 
-      else if (data.actionType === 'ai_reply') {
-        const clientConfig = await this.prisma.client.findUnique({ where: { id: clientId } });
-        const systemPrompt = data.systemPrompt || clientConfig?.aiSystemPrompt || "You are a helpful assistant.";
-        const userMsg = context.message?.text?.body || '';
-        const aiReply = await this.aiService.generateReply(userMsg, systemPrompt);
+      if (node.type === 'endNode') {
+        return { stop: true };
+      }
+
+      if (node.type === 'conditionNode') {
+        const field = data.field || 'message.text';
+        const operator = data.operator || 'contains';
+        const value = data.value || '';
         
-        await this.sendWhatsAppMessage(phoneNumberId, context.contact.phone, aiReply);
-        await this.saveAndEmitMessage(clientId, context.conversation.id, aiReply);
+        // Extract field value
+        let actualValue = '';
+        if (field === 'message.text') {
+          actualValue = context.message?.text?.body || '';
+        }
+        
+        let conditionMet = false;
+        if (operator === 'contains') {
+          conditionMet = actualValue.toLowerCase().includes(value.toLowerCase());
+        } else if (operator === 'equals') {
+          conditionMet = actualValue.toLowerCase() === value.toLowerCase();
+        } else if (operator === 'regex') {
+          try {
+            const regex = new RegExp(value, 'i');
+            conditionMet = regex.test(actualValue);
+          } catch (e) {
+            conditionMet = false;
+          }
+        }
+        
+        return { nextHandle: conditionMet ? 'true' : 'false' };
       }
-      else if (data.actionType === 'delay') {
-        const ms = (data.delaySeconds || 1) * 1000;
-        await new Promise(resolve => setTimeout(resolve, ms));
-      }
-      else if (data.actionType === 'assign_agent') {
-        if (data.agentId) {
-          await this.prisma.conversation.update({
-            where: { id: context.conversation.id },
-            data: { assignedToId: data.agentId },
-          });
+
+      if (node.type === 'actionNode') {
+        if (data.actionType === 'reply') {
+          const text = data.text || '';
+          await this.sendWhatsAppMessage(phoneNumberId, context.contact.phone, text);
+          await this.saveAndEmitMessage(clientId, context.conversation.id, text);
+        } 
+        else if (data.actionType === 'ai_reply') {
+          const clientConfig = await this.prisma.client.findUnique({ where: { id: clientId } });
+          const systemPrompt = data.systemPrompt || clientConfig?.aiSystemPrompt || "You are a helpful assistant.";
+          const userMsg = context.message?.text?.body || '';
+          const aiReply = await this.aiService.generateReply(userMsg, systemPrompt);
+          
+          if (aiReply && aiReply.reply) {
+            await this.sendWhatsAppMessage(phoneNumberId, context.contact.phone, aiReply.reply);
+            await this.saveAndEmitMessage(clientId, context.conversation.id, aiReply.reply);
+          }
+        }
+        else if (data.actionType === 'delay') {
+          const ms = (data.delaySeconds || 1) * 1000;
+          await new Promise(resolve => setTimeout(resolve, ms));
+        }
+        else if (data.actionType === 'assign_agent') {
+          if (data.agentId) {
+            await this.prisma.conversation.update({
+              where: { id: context.conversation.id },
+              data: { assignedToId: data.agentId },
+            });
+          }
+        }
+        else if (data.actionType === 'api_request') {
+          const method = data.method || 'GET';
+          const url = data.url;
+          const headers = data.headers ? JSON.parse(data.headers) : {};
+          const body = data.body ? JSON.parse(data.body) : undefined;
+          
+          if (url) {
+            try {
+              await firstValueFrom(
+                this.httpService.request({
+                  method,
+                  url,
+                  headers,
+                  data: body
+                })
+              );
+            } catch (err) {
+              this.logger.error(`API Request failed in automation: ${err.message}`);
+            }
+          }
+        }
+        else if (data.actionType === 'webhook') {
+          const url = data.webhookUrl;
+          if (url) {
+            try {
+              await firstValueFrom(
+                this.httpService.post(url, {
+                  event: 'automation_webhook',
+                  context
+                })
+              );
+            } catch (err) {
+              this.logger.error(`Webhook failed in automation: ${err.message}`);
+            }
+          }
         }
       }
     } catch (error) {
-      this.logger.error(`Error executing action node ${node.id}: ${error.message}`);
+      this.logger.error(`Error executing node ${node.id}: ${error.message}`);
     }
   }
 

@@ -1,13 +1,14 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionLimitGuard } from '../billing/subscription-limit.guard';
 import { Role } from '@algo-matrix/database';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Users (Team)')
 @ApiBearerAuth()
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SubscriptionLimitGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

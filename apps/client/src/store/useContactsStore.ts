@@ -12,6 +12,8 @@ export type Contact = {
   status: "OPTED_IN" | "OPTED_OUT";
   lastActive?: string | null;
   attributes?: Record<string, string>;
+  notes?: string | null;
+  customFields?: Record<string, any> | null;
 };
 
 interface ContactsState {

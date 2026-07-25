@@ -29,7 +29,27 @@ async function bootstrap() {
   
   // CORS Configuration
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*', // Should be set to specific domains in production
+    origin: (origin, callback) => {
+      if (!origin || origin === 'null') {
+        return callback(null, true);
+      }
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3002',
+        'https://algomatrixai.com',
+        'https://www.algomatrixai.com'
+      ];
+      if (
+        allowedOrigins.includes(origin) || 
+        origin.endsWith('.algomatrixai.com') ||
+        process.env.CORS_ORIGIN === '*' ||
+        (process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.includes(origin))
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

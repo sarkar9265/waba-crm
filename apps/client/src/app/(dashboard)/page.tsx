@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent, Button, Skeleton } from "@algo-matrix/ui";
 import { MessageSquare, Users, Megaphone, ArrowRight, Activity, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAnalyticsStore } from "@/store/useAnalyticsStore";
 
 export default function DashboardHome() {
@@ -20,6 +20,12 @@ export default function DashboardHome() {
     { title: "Active Conversations", value: metrics.activeConversations, icon: Activity, trend: "Currently open" },
     { title: "Total Contacts", value: metrics.totalContacts, icon: Users, trend: "In database" },
     { title: "Active Campaigns", value: metrics.activeCampaigns, icon: Megaphone, trend: "Running or paused" },
+    { title: "Closed Conversations", value: metrics.closedConversations, icon: MessageSquare, trend: "Total resolved" },
+    { title: "Pending Conversations", value: metrics.pendingConversations, icon: Activity, trend: "Awaiting reply" },
+    { title: "New Contacts", value: metrics.newContacts, icon: Users, trend: "Added today" },
+    { title: "Revenue", value: `₹${metrics.revenue.toLocaleString()}`, icon: Trophy, trend: "Total collected" },
+    { title: "Active Agents", value: metrics.activeAgents, icon: Users, trend: "Currently active" },
+    { title: "Campaign Sent", value: metrics.campaignPerformance.sent, icon: Megaphone, trend: "All campaigns" },
   ] : [];
 
   const container = {
@@ -49,7 +55,7 @@ export default function DashboardHome() {
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
       >
         {loading || !metrics
-          ? Array.from({ length: 4 }).map((_, i) => (
+          ? Array.from({ length: 10 }).map((_, i) => (
               <Card key={i} className="overflow-hidden">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <Skeleton className="h-4 w-24" />
@@ -245,6 +251,71 @@ export default function DashboardHome() {
                     <Bar dataKey="inbound" fill="var(--secondary)" radius={[4, 4, 0, 0]} name="Inbound" />
                     <Bar dataKey="outbound" fill="var(--primary)" radius={[4, 4, 0, 0]} name="Outbound" />
                   </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* New Charts Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Delivery, Read & Reply Rates (%)</CardTitle>
+          </CardHeader>
+          <CardContent className="pl-0">
+            <div className="h-[300px] w-full">
+              {loading ? (
+                <div className="h-full w-full flex items-center justify-center pl-8">
+                  <Skeleton className="h-[250px] w-full" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={charts} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="deliveryRate" stroke="var(--primary)" strokeWidth={2} name="Delivery Rate" />
+                    <Line type="monotone" dataKey="readRate" stroke="#10b981" strokeWidth={2} name="Read Rate" />
+                    <Line type="monotone" dataKey="replyRate" stroke="#f59e0b" strokeWidth={2} name="Reply Rate" />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>Response Time & Campaign ROI</CardTitle>
+          </CardHeader>
+          <CardContent className="pl-0">
+            <div className="h-[300px] w-full">
+              {loading ? (
+                <div className="h-full w-full flex items-center justify-center pl-8">
+                  <Skeleton className="h-[250px] w-full" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={charts} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="left" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="right" orientation="right" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                    />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="responseTime" stroke="#ef4444" strokeWidth={2} name="Response Time (mins)" />
+                    <Line yAxisId="right" type="monotone" dataKey="campaignRoi" stroke="#8b5cf6" strokeWidth={2} name="Campaign ROI (%)" />
+                  </LineChart>
                 </ResponsiveContainer>
               )}
             </div>

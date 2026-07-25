@@ -1,8 +1,9 @@
 import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { CampaignService } from './campaign.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionLimitGuard } from '../billing/subscription-limit.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SubscriptionLimitGuard)
 @Controller('campaigns')
 export class CampaignController {
   constructor(private readonly campaignService: CampaignService) {}
@@ -10,6 +11,11 @@ export class CampaignController {
   @Get()
   findAll(@Request() req: any, @Query() query: any) {
     return this.campaignService.findAll(req.user.clientId, query);
+  }
+
+  @Get('queue-status')
+  getQueueStatus(@Request() req: any) {
+    return this.campaignService.getQueueStatus(req.user.clientId);
   }
 
   @Get(':id')

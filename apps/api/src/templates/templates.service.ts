@@ -6,7 +6,7 @@ export class TemplatesService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(clientId: string, query: any = {}) {
-    const { page = 1, limit = 20, search } = query;
+    const { page = 1, limit = 20, search, status, category, language } = query;
     const skip = (page - 1) * limit;
 
     const where: any = { clientId };
@@ -14,6 +14,9 @@ export class TemplatesService {
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
+    if (status && status !== 'ALL') where.status = status;
+    if (category && category !== 'ALL') where.category = category;
+    if (language && language !== 'ALL') where.language = language;
 
     const [data, total] = await Promise.all([
       this.prisma.template.findMany({

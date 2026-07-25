@@ -5,19 +5,25 @@ import Link from "next/link";
 import { 
   Button, Input, Badge, Card,
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@algo-matrix/ui";
-import { Search, Plus, MoreHorizontal, FileText, CheckCircle2, AlertCircle, Clock, Loader2, RefreshCw, Trash } from "lucide-react";
+import { Search, Plus, MoreHorizontal, FileText, CheckCircle2, AlertCircle, Clock, Loader2, RefreshCw, Trash, Eye, Filter } from "lucide-react";
 import { useTemplatesStore, Template } from "@/store/useTemplatesStore";
 import { format } from "date-fns";
+import TemplatePreviewModal from "@/components/templates/TemplatePreviewModal";
 
 export default function TemplatesPage() {
   const { templates, total, page, limit, totalPages, loading, fetchTemplates, deleteTemplate, syncTemplate } = useTemplatesStore();
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("ALL");
+  const [category, setCategory] = useState("ALL");
+  const [language, setLanguage] = useState("ALL");
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
   useEffect(() => {
-    fetchTemplates({ page: 1, limit, search });
-  }, [search]);
+    fetchTemplates({ page: 1, limit, search, status, category, language });
+  }, [search, status, category, language]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this template?")) {
@@ -74,8 +80,8 @@ export default function TemplatesPage() {
 
       <Card className="p-0 overflow-hidden">
         {/* Table Toolbar */}
-        <div className="p-4 border-b border-[var(--border)] flex gap-4 bg-[var(--accent)]/30">
-          <div className="relative flex-1 max-w-sm w-full">
+        <div className="p-4 border-b border-[var(--border)] flex flex-wrap gap-4 bg-[var(--accent)]/30 items-center">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
             <Input 
               placeholder="Search templates..." 
@@ -83,6 +89,47 @@ export default function TemplatesPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 bg-[var(--background)]"
             />
+          </div>
+          
+          <div className="flex gap-4 items-center">
+            <Filter className="h-4 w-4 text-[var(--muted-foreground)]" />
+            
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-[140px] bg-[var(--background)]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Status</SelectItem>
+                <SelectItem value="APPROVED">Approved</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="REJECTED">Rejected</SelectItem>
+                <SelectItem value="DRAFT">Draft</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="w-[140px] bg-[var(--background)]">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Categories</SelectItem>
+                <SelectItem value="MARKETING">Marketing</SelectItem>
+                <SelectItem value="UTILITY">Utility</SelectItem>
+                <SelectItem value="AUTHENTICATION">Authentication</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={language} onValueChange={setLanguage}>
+              <SelectTrigger className="w-[140px] bg-[var(--background)]">
+                <SelectValue placeholder="Language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Languages</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="es">Spanish</SelectItem>
+                <SelectItem value="pt_BR">Portuguese</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -134,6 +181,9 @@ export default function TemplatesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setPreviewTemplate(template)}>
+                          <Eye className="h-4 w-4 mr-2" /> Preview
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleSync(template.id)}>
                           <RefreshCw className="h-4 w-4 mr-2" /> Sync with Meta
                         </DropdownMenuItem>
@@ -173,6 +223,14 @@ export default function TemplatesPage() {
           </div>
         </div>
       </Card>
+
+      {previewTemplate && (
+        <TemplatePreviewModal 
+          template={previewTemplate} 
+          open={!!previewTemplate} 
+          onOpenChange={(open: boolean) => !open && setPreviewTemplate(null)} 
+        />
+      )}
     </div>
   );
 }

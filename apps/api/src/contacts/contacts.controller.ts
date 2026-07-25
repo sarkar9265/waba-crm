@@ -1,10 +1,11 @@
 import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request, Query, Patch, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionLimitGuard } from '../billing/subscription-limit.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SubscriptionLimitGuard)
 @Controller('contacts')
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
@@ -43,6 +44,11 @@ export class ContactsController {
   @Post('merge')
   mergeContacts(@Request() req: any, @Body() data: { primaryId: string, secondaryId: string }) {
     return this.contactsService.mergeContacts(req.user.clientId, data.primaryId, data.secondaryId);
+  }
+
+  @Get('duplicates')
+  findDuplicates(@Request() req: any) {
+    return this.contactsService.findDuplicates(req.user.clientId);
   }
 
   @Get(':id/activity')

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -192,11 +193,11 @@ export function GlobalSearch() {
   // ──────────── Build flat list of navigable items ────────────
   const groups: SearchGroup[] = results
     ? [
-        { key: "contacts", label: "Contacts", icon: <Users className="h-4 w-4" />, color: "text-blue-400", items: results.contacts },
-        { key: "messages", label: "Messages", icon: <MessageSquare className="h-4 w-4" />, color: "text-violet-400", items: results.messages },
-        { key: "campaigns", label: "Campaigns", icon: <Megaphone className="h-4 w-4" />, color: "text-amber-400", items: results.campaigns },
-        { key: "templates", label: "Templates", icon: <FileText className="h-4 w-4" />, color: "text-emerald-400", items: results.templates },
-        { key: "users", label: "Users", icon: <UserCog className="h-4 w-4" />, color: "text-pink-400", items: results.users },
+        { key: "contacts" as keyof SearchResults, label: "Contacts", icon: <Users className="h-4 w-4" />, color: "text-blue-400", items: results.contacts },
+        { key: "messages" as keyof SearchResults, label: "Messages", icon: <MessageSquare className="h-4 w-4" />, color: "text-violet-400", items: results.messages },
+        { key: "campaigns" as keyof SearchResults, label: "Campaigns", icon: <Megaphone className="h-4 w-4" />, color: "text-amber-400", items: results.campaigns },
+        { key: "templates" as keyof SearchResults, label: "Templates", icon: <FileText className="h-4 w-4" />, color: "text-emerald-400", items: results.templates },
+        { key: "users" as keyof SearchResults, label: "Users", icon: <UserCog className="h-4 w-4" />, color: "text-pink-400", items: results.users },
       ].filter((g) => g.items.length > 0)
     : [];
 

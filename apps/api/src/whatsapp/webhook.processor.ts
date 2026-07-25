@@ -38,11 +38,15 @@ export class WebhookProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(`Webhook job ${job.id} failed: ${error.message}`, error.stack);
       
+      const maxAttempts = job.opts.attempts || 5;
+      const isFinalAttempt = job.attemptsMade >= maxAttempts - 1;
+
       // Update DB with the error
       await this.prisma.webhookLog.update({
         where: { id: webhookLogId },
         data: {
           error: error.message,
+          status: isFinalAttempt ? 'FAILED' : 'PENDING',
           attempts: { increment: 1 },
         },
       });

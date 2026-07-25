@@ -6,6 +6,7 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../storage/storage.service';
 import { AutomationService } from '../automation/automation.service';
+import FormData from 'form-data';
 
 @Injectable()
 export class WhatsappService {
@@ -246,7 +247,36 @@ export class WhatsappService {
         });
       }
 
-      // 4. Save the Message to the database
+      // 4. Perform AI Analysis on incoming message (if text)
+      let msgSentiment = 'NEUTRAL';
+      let tags: string[] = [];
+      let leadScore = 0;
+      
+      if (message.text?.body) {
+        const analysis = await this.aiService.analyzeMessage(message.text.body);
+        msgSentiment = analysis.sentiment;
+        tags = analysis.tags || [];
+        leadScore = analysis.leadScore || 0;
+
+        // Update contact with new tags and lead score
+        const currentTags = contact.tags || [];
+        const mergedTags = Array.from(new Set([...currentTags, ...tags]));
+        await this.prisma.contact.update({
+          where: { id: contact.id },
+          data: { tags: mergedTags }
+        });
+
+        // Update conversation with lead score and sentiment
+        await this.prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { 
+            sentiment: msgSentiment, 
+            leadScore 
+          }
+        });
+      }
+
+      // 5. Save the Message to the database
       const savedMessage = await this.prisma.message.create({
         data: {
           wamid: message.id,
@@ -255,6 +285,7 @@ export class WhatsappService {
           type: message.type || 'text',
           direction: 'INBOUND',
           status: 'DELIVERED',
+          sentiment: msgSentiment
         }
       });
 
@@ -272,23 +303,32 @@ export class WhatsappService {
       await this.automationService.handleTrigger(clientId, 'INCOMING_MESSAGE', { message, contact, conversation });
       await this.automationService.handleTrigger(clientId, 'KEYWORD', { message, contact, conversation });
 
-      // 7. AI Chatbot automation
-      // If the client has AI enabled, generate a response
+      // 8. AI Chatbot automation
+      // If the client has AI enabled and the conversation is not in HANDOFF state
       const client = await this.prisma.client.findUnique({
         where: { id: clientId },
         select: { aiEnabled: true, aiSystemPrompt: true }
       });
 
-      if (client?.aiEnabled && message.text?.body) {
-        const systemPrompt = client.aiSystemPrompt || "You are a helpful customer support assistant for Algo Matrix. Be polite and concise.";
-        const aiReply = await this.aiService.generateReply(message.text.body, systemPrompt);
+      if (client?.aiEnabled && conversation.botStatus === 'ACTIVE' && message.text?.body) {
+        const systemPrompt = client.aiSystemPrompt || "You are a helpful customer support assistant.";
+        const knowledgeContext = await this.aiService.searchKnowledgeBase(clientId, message.text.body);
         
-        this.logger.log(`AI Reply generated: ${aiReply}`);
+        const aiReply = await this.aiService.generateReply(message.text.body, systemPrompt, knowledgeContext);
         
+        this.logger.log(`AI Reply generated: ${aiReply.reply} | Handoff requested: ${aiReply.handoff}`);
+        
+        if (aiReply.handoff) {
+          await this.prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { botStatus: 'HANDOFF' }
+          });
+        }
+
         const savedAiMessage = await this.prisma.message.create({
           data: {
             conversationId: conversation.id,
-            content: aiReply,
+            content: aiReply.reply,
             type: 'text',
             direction: 'OUTBOUND',
             status: 'SENT',
@@ -316,7 +356,13 @@ export class WhatsappService {
    */
   async sendMessageToMeta(clientId: string, phoneNumberId: string, to: string, type: string, contentData: any) {
     try {
-      const token = process.env.META_ACCESS_TOKEN; // Or fetch tenant-specific token if applicable
+      const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+      const token = client?.metaToken || process.env.META_ACCESS_TOKEN;
+      
+      if (!token) {
+        throw new Error('No Meta Access Token available for this client');
+      }
+
       const url = `https://graph.facebook.com/${this.graphApiVersion}/${phoneNumberId}/messages`;
       
       const payload: any = {
@@ -369,10 +415,32 @@ export class WhatsappService {
       this.logger.log(`Message [${status.id}] status updated to: ${status.status} for recipient ${status.recipient_id}`);
       
       // Update Message status in DB
-      await this.prisma.message.updateMany({
+      const updatedMessages = await this.prisma.message.updateMany({
         where: { wamid: status.id },
         data: { status: status.status.toUpperCase() as any }
       });
+
+      // Update Campaign Analytics if message belongs to a campaign
+      if (updatedMessages.count > 0) {
+        const message = await this.prisma.message.findFirst({
+          where: { wamid: status.id },
+          select: { campaignId: true }
+        });
+
+        if (message?.campaignId) {
+          const incrementField = 
+            status.status === 'delivered' ? 'delivered' :
+            status.status === 'read' ? 'read' :
+            status.status === 'failed' ? 'failed' : null;
+          
+          if (incrementField) {
+            await this.prisma.campaign.update({
+              where: { id: message.campaignId },
+              data: { [incrementField]: { increment: 1 } }
+            });
+          }
+        }
+      }
 
       this.chatGateway.emitMessageStatus(clientId, {
         id: status.id,
@@ -380,5 +448,93 @@ export class WhatsappService {
         recipient_id: status.recipient_id
       });
     }
+  }
+
+  // --- Phase 6 Features ---
+
+  async sendInteractiveButtons(clientId: string, phoneNumberId: string, to: string, bodyText: string, buttons: any[]) {
+    const interactiveData = {
+      type: "button",
+      body: { text: bodyText },
+      action: {
+        buttons: buttons.map((btn, idx) => ({
+          type: "reply",
+          reply: { id: btn.id || `btn_${idx}`, title: btn.title }
+        }))
+      }
+    };
+    return this.sendMessageToMeta(clientId, phoneNumberId, to, 'interactive', interactiveData);
+  }
+
+  async sendListMessage(clientId: string, phoneNumberId: string, to: string, bodyText: string, buttonText: string, sections: any[]) {
+    const interactiveData = {
+      type: "list",
+      body: { text: bodyText },
+      action: {
+        button: buttonText,
+        sections: sections
+      }
+    };
+    return this.sendMessageToMeta(clientId, phoneNumberId, to, 'interactive', interactiveData);
+  }
+
+  async sendCatalogMessage(clientId: string, phoneNumberId: string, to: string, bodyText: string, catalogId: string, productRetailerId: string) {
+    const interactiveData = {
+      type: "product",
+      body: { text: bodyText },
+      action: {
+        catalog_id: catalogId,
+        product_retailer_id: productRetailerId
+      }
+    };
+    return this.sendMessageToMeta(clientId, phoneNumberId, to, 'interactive', interactiveData);
+  }
+
+  async uploadMedia(clientId: string, phoneNumberId: string, fileBuffer: Buffer, mimeType: string, filename: string) {
+    const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+    const token = client?.metaToken || process.env.META_ACCESS_TOKEN;
+    if (!token) throw new Error('No Meta Access Token available for this client');
+
+    const url = `https://graph.facebook.com/${this.graphApiVersion}/${phoneNumberId}/media`;
+    
+    const formData = new FormData();
+    formData.append('file', fileBuffer, { filename, contentType: mimeType });
+    formData.append('messaging_product', 'whatsapp');
+
+    const response = await firstValueFrom(
+      this.httpService.post(url, formData, {
+        headers: {
+          ...formData.getHeaders(),
+          'Authorization': `Bearer ${token}`
+        }
+      })
+    );
+    return response.data;
+  }
+
+  async downloadMedia(clientId: string, mediaId: string) {
+    const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+    const token = client?.metaToken || process.env.META_ACCESS_TOKEN;
+    if (!token) throw new Error('No Meta Access Token available for this client');
+
+    const urlRes = await firstValueFrom(
+      this.httpService.get(`https://graph.facebook.com/${this.graphApiVersion}/${mediaId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+    );
+    
+    if (urlRes.data && urlRes.data.url) {
+      const binaryRes = await firstValueFrom(
+        this.httpService.get(urlRes.data.url, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          responseType: 'arraybuffer'
+        })
+      );
+      return {
+        buffer: Buffer.from(binaryRes.data),
+        mimeType: urlRes.data.mime_type
+      };
+    }
+    throw new Error('Media URL not found');
   }
 }

@@ -7,9 +7,10 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter,
   Checkbox, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Tabs, TabsContent, TabsList, TabsTrigger
+  Tabs, TabsContent, TabsList, TabsTrigger,
+  Textarea
 } from "@algo-matrix/ui";
-import { Search, Filter, Plus, Upload, Download, MoreHorizontal, Phone, Mail, Edit, Trash, Loader2, Activity } from "lucide-react";
+import { Search, Filter, Plus, Upload, Download, MoreHorizontal, Phone, Mail, Edit, Trash, Loader2, Activity, Users } from "lucide-react";
 import { useContactsStore, Contact } from "@/store/useContactsStore";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
@@ -33,10 +34,16 @@ export default function ContactsPage() {
 
   // Filters state
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [tagFilter, setTagFilter] = useState<string>("");
+  
+  // Duplicates state
+  const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [isDuplicatesOpen, setIsDuplicatesOpen] = useState(false);
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false);
 
   useEffect(() => {
-    fetchContacts({ page: 1, limit, search, status: statusFilter });
-  }, [search, statusFilter]);
+    fetchContacts({ page: 1, limit, search, status: statusFilter, tags: tagFilter });
+  }, [search, statusFilter, tagFilter]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === contacts.length) {
@@ -111,6 +118,20 @@ export default function ContactsPage() {
     }
   };
 
+  const handleFindDuplicates = async () => {
+    setLoadingDuplicates(true);
+    setIsDuplicatesOpen(true);
+    try {
+      const { data } = await api.get('/contacts/duplicates');
+      setDuplicates(data);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to find duplicates");
+    } finally {
+      setLoadingDuplicates(false);
+    }
+  };
+
   const fetchActivity = async (id: string) => {
     setLoadingActivity(true);
     try {
@@ -124,6 +145,24 @@ export default function ContactsPage() {
   };
 
   const ContactForm = ({ contact, onSubmit, onCancel, showActivity }: { contact?: Contact | null, onSubmit: (e: React.FormEvent, data: any) => void, onCancel: () => void, showActivity?: boolean }) => {
+    const [customFields, setCustomFields] = useState<Record<string, string>>(contact?.customFields || {});
+    const [newFieldKey, setNewFieldKey] = useState("");
+    const [newFieldValue, setNewFieldValue] = useState("");
+
+    const addCustomField = () => {
+      if (newFieldKey && newFieldValue) {
+        setCustomFields(prev => ({ ...prev, [newFieldKey]: newFieldValue }));
+        setNewFieldKey("");
+        setNewFieldValue("");
+      }
+    };
+
+    const removeCustomField = (key: string) => {
+      const updated = { ...customFields };
+      delete updated[key];
+      setCustomFields(updated);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       const formData = new FormData(e.target as HTMLFormElement);
@@ -133,7 +172,9 @@ export default function ContactsPage() {
         phone: formData.get("phone") as string,
         email: formData.get("email") as string,
         status: formData.get("status") as string,
+        notes: formData.get("notes") as string,
         tags: (formData.get("tags") as string).split(",").map(t => t.trim()).filter(Boolean),
+        customFields
       };
       onSubmit(e, data);
     };
@@ -177,8 +218,32 @@ export default function ContactsPage() {
             <label className="text-sm font-medium">Tags (comma separated)</label>
             <Input name="tags" defaultValue={contact?.tags?.join(", ")} placeholder="VIP, Lead, Support" />
           </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Internal Notes</label>
+            <Textarea name="notes" defaultValue={contact?.notes || ""} placeholder="Add any background notes here..." />
+          </div>
+
+          <div className="space-y-2 border-t pt-4">
+            <label className="text-sm font-medium">Custom Fields</label>
+            {Object.entries(customFields).map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2 mb-2">
+                <Input value={key} readOnly className="w-1/3 bg-[var(--muted)]/50" />
+                <Input value={value} readOnly className="flex-1 bg-[var(--muted)]/50" />
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeCustomField(key)}>
+                  <Trash className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 mt-2">
+              <Input placeholder="Key (e.g. Industry)" value={newFieldKey} onChange={e => setNewFieldKey(e.target.value)} className="w-1/3" />
+              <Input placeholder="Value (e.g. Tech)" value={newFieldValue} onChange={e => setNewFieldValue(e.target.value)} className="flex-1" />
+              <Button type="button" variant="secondary" onClick={addCustomField}>Add</Button>
+            </div>
+          </div>
+
         </div>
-        <SheetFooter className="pt-4 border-t border-[var(--border)] shrink-0 px-4 sm:px-6">
+        <SheetFooter className="pt-4 border-t border-[var(--border)] shrink-0 px-4 sm:px-6 mb-4">
           <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
           <Button type="submit">Save Contact</Button>
         </SheetFooter>
@@ -249,6 +314,9 @@ export default function ContactsPage() {
           <p className="text-[var(--muted-foreground)]">Manage your audience, create segments, and track engagement.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={handleFindDuplicates}>
+            <Users className="mr-2 h-4 w-4" /> Find Duplicates
+          </Button>
           <Button variant="outline" className="flex-1 sm:flex-none" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" /> Export
           </Button>
@@ -320,6 +388,15 @@ export default function ContactsPage() {
               </SelectContent>
             </Select>
 
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
+              <Input 
+                placeholder="Filter by Tag..." 
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="pl-9 w-[150px] bg-[var(--background)]"
+              />
+            </div>
           </div>
         </div>
 
@@ -473,6 +550,52 @@ export default function ContactsPage() {
             }} 
             onCancel={() => { setIsEditOpen(false); setEditingContact(null); }} 
           />
+        </SheetContent>
+      </Sheet>
+
+      {/* Duplicates Sheet */}
+      <Sheet open={isDuplicatesOpen} onOpenChange={setIsDuplicatesOpen}>
+        <SheetContent className="flex flex-col sm:max-w-md w-full p-0">
+          <SheetHeader className="shrink-0 p-6 pb-0">
+            <SheetTitle>Duplicate Contacts</SheetTitle>
+            <SheetDescription>Review and merge potential duplicates.</SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {loadingDuplicates ? (
+              <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)]" /></div>
+            ) : duplicates.length === 0 ? (
+              <div className="text-center py-8 text-[var(--muted-foreground)]">No duplicates found.</div>
+            ) : (
+              duplicates.map((dup, i) => (
+                <Card key={i} className="p-4 border border-[var(--border)] bg-[var(--background)]">
+                  <div className="font-semibold text-sm mb-2 text-[var(--primary)]">{dup.reason}</div>
+                  <div className="space-y-2 mb-4">
+                    {dup.contacts.map((c: any) => (
+                      <div key={c.id} className="text-sm p-2 bg-[var(--muted)]/30 rounded flex justify-between items-center">
+                        <div>
+                          <div className="font-medium">{c.firstName} {c.lastName}</div>
+                          <div className="text-xs text-[var(--muted-foreground)]">{c.phone} | {c.email}</div>
+                        </div>
+                        <div className="text-[10px] uppercase text-[var(--muted-foreground)]">ID: {c.id.substring(0,5)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button 
+                    size="sm" 
+                    className="w-full"
+                    onClick={async () => {
+                      // Automatically merge into the first one
+                      await mergeContacts(dup.contacts[0].id, dup.contacts[1].id);
+                      setDuplicates(duplicates.filter((_, idx) => idx !== i));
+                      alert("Merged successfully!");
+                    }}
+                  >
+                    Merge into First
+                  </Button>
+                </Card>
+              ))
+            )}
+          </div>
         </SheetContent>
       </Sheet>
 

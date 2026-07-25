@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Delete, Body, Query, Param, Res, HttpStatus, Logger, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Query, Param, Res, HttpStatus, Logger, Req, UseGuards, UnauthorizedException, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { WhatsappService } from './whatsapp.service';
 import type { Response, Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -91,6 +92,85 @@ export class WhatsappController {
   async reconnectAccount() {
     // Placeholder for refresh token logic or re-triggering webhook registration
     return { success: true, message: 'Account tokens and webhooks refreshed' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('replay/:id')
+  async replayWebhook(@Param('id') id: string) {
+    const webhookLog = await this.prisma.webhookLog.findUnique({
+      where: { id }
+    });
+
+    if (!webhookLog || webhookLog.status !== 'FAILED') {
+      return { success: false, error: 'Webhook log not found or not in FAILED status' };
+    }
+
+    // Update status to PENDING and add back to queue
+    await this.prisma.webhookLog.update({
+      where: { id },
+      data: { status: 'PENDING' }
+    });
+
+    await this.webhookQueue.add('process', {
+      payload: webhookLog.payload,
+      webhookLogId: webhookLog.id,
+    }, {
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 2000 },
+    });
+
+    return { success: true, message: 'Webhook queued for replay' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('media/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadMedia(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    const clientId = req.user?.clientId;
+    if (!file) {
+      return { success: false, error: 'No file provided' };
+    }
+
+    // We need the phone number ID. For this example, we'll fetch the first connected WABA account.
+    const wabaAccount = await this.whatsappService.getAccounts(clientId);
+    if (!wabaAccount || wabaAccount.length === 0 || !wabaAccount[0].phoneNumberId) {
+      return { success: false, error: 'No connected WhatsApp Business Account found' };
+    }
+
+    try {
+      const result = await this.whatsappService.uploadMedia(
+        clientId, 
+        wabaAccount[0].phoneNumberId, 
+        file.buffer, 
+        file.mimetype, 
+        file.originalname
+      );
+      return { success: true, media: result };
+    } catch (error) {
+      this.logger.error(`Media upload failed: ${error.message}`);
+      return { success: false, error: 'Failed to upload media to Meta' };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('media/:id/download')
+  async downloadMedia(
+    @Req() req: any,
+    @Param('id') mediaId: string,
+    @Res() res: Response
+  ) {
+    const clientId = req.user?.clientId;
+    try {
+      const { buffer, mimeType } = await this.whatsappService.downloadMedia(clientId, mediaId);
+      res.setHeader('Content-Type', mimeType);
+      return res.status(HttpStatus.OK).send(buffer);
+    } catch (error) {
+      this.logger.error(`Media download failed: ${error.message}`);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Failed to download media');
+    }
   }
 
   /**

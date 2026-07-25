@@ -12,7 +12,7 @@ type ConversationListProps = {
 };
 
 export function ConversationList({ activeId, onSelect }: ConversationListProps) {
-  const [filter, setFilter] = useState<"All" | "Unread">("All");
+  const [filter, setFilter] = useState<"All" | "Unread" | "Unassigned" | "Closed">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -78,7 +78,12 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
   const filtered = conversations.filter(c => {
     const matchSearch = c.contact?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         c.contact?.phone?.includes(searchQuery);
-    const matchFilter = filter === "All" || (filter === "Unread" && (c.unreadCount || 0) > 0);
+    let matchFilter = true;
+    if (filter === "Unread") matchFilter = (c.unreadCount || 0) > 0;
+    if (filter === "Unassigned") matchFilter = !c.assignedToId;
+    if (filter === "Closed") matchFilter = c.status === "CLOSED";
+    // If not showing Closed specifically, we should probably hide CLOSED from 'All' or 'Unassigned'?
+    // Let's just keep 'All' literally 'All' for now, but usually it hides closed. We will leave it as true.
     return matchSearch && matchFilter;
   });
 
@@ -129,6 +134,22 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
               onClick={() => setFilter("Unread")}
             >
               Unread
+            </Button>
+            <Button 
+              variant={filter === "Unassigned" ? "default" : "ghost"} 
+              size="sm" 
+              className="rounded-full h-8"
+              onClick={() => setFilter("Unassigned")}
+            >
+              Unassigned
+            </Button>
+            <Button 
+              variant={filter === "Closed" ? "default" : "ghost"} 
+              size="sm" 
+              className="rounded-full h-8"
+              onClick={() => setFilter("Closed")}
+            >
+              Closed
             </Button>
           </div>
           <Button 
@@ -197,9 +218,13 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium truncate text-[var(--foreground)]">{chat.contact?.name || chat.contact?.phone}</span>
-                      <span className={`text-xs whitespace-nowrap ml-2 ${(chat.unreadCount || 0) > 0 ? 'text-[var(--primary)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
-                        {formatTimestamp(chat.updatedAt)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {chat.priority === "URGENT" && <div className="h-2 w-2 rounded-full bg-red-500" title="Urgent Priority" />}
+                        {chat.priority === "HIGH" && <div className="h-2 w-2 rounded-full bg-orange-500" title="High Priority" />}
+                        <span className={`text-xs whitespace-nowrap ${(chat.unreadCount || 0) > 0 ? 'text-[var(--primary)] font-medium' : 'text-[var(--muted-foreground)]'}`}>
+                          {formatTimestamp(chat.updatedAt)}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className={`text-sm truncate ${(chat.unreadCount || 0) > 0 ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted-foreground)]'}`}>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { 
   Button, Input, Card, 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -35,6 +36,8 @@ export default function CreateCampaignPage() {
   const [audienceTags, setAudienceTags] = useState("");
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [scheduleType, setScheduleType] = useState("NOW");
+  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [timezone, setTimezone] = useState<string>(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
   useEffect(() => {
     fetchTemplates({ limit: 100 }); // fetch all for the dropdown
@@ -44,6 +47,7 @@ export default function CreateCampaignPage() {
     if (step === 0 && !name.trim()) return alert("Please enter a campaign name");
     if (step === 1 && !templateId) return alert("Please select a template");
     if (step === 2 && audienceType === "TAG" && !audienceTags.trim()) return alert("Please enter tags");
+    if (step === 4 && scheduleType === "LATER" && !scheduledAt) return alert("Please select a date and time");
     
     if (step < WIZARD_STEPS.length - 1) {
       setStep(step + 1);
@@ -62,7 +66,8 @@ export default function CreateCampaignPage() {
         templateId: templateId || undefined,
         audience: { type: audienceType, tags: audienceTags.split(',').map(t => t.trim()).filter(Boolean) },
         variables,
-        status: "DRAFT"
+        status: "DRAFT",
+        scheduledAt: scheduleType === "LATER" ? new Date(scheduledAt).toISOString() : undefined,
       });
       router.push("/campaigns");
     } catch (e) {
@@ -80,7 +85,8 @@ export default function CreateCampaignPage() {
         templateId,
         audience: { type: audienceType, tags: audienceTags.split(',').map(t => t.trim()).filter(Boolean) },
         variables,
-        status: scheduleType === "NOW" ? "DRAFT" : "SCHEDULED" // we launch draft to running
+        status: scheduleType === "NOW" ? "DRAFT" : "SCHEDULED", // we launch draft to running
+        scheduledAt: scheduleType === "LATER" ? new Date(scheduledAt).toISOString() : undefined,
       });
 
       if (scheduleType === "NOW") {
@@ -281,12 +287,42 @@ export default function CreateCampaignPage() {
                   variant={scheduleType === "LATER" ? "default" : "outline"} 
                   className="h-24 flex flex-col gap-2"
                   onClick={() => setScheduleType("LATER")}
-                  disabled
                 >
                   <Clock className="h-6 w-6" />
                   Schedule for Later
                 </Button>
               </div>
+
+              {scheduleType === "LATER" && (
+                <div className="space-y-4 mt-6 p-4 border rounded-md bg-[var(--accent)]/30">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Select Date & Time</label>
+                    <Input 
+                      type="datetime-local" 
+                      value={scheduledAt}
+                      onChange={e => setScheduledAt(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Timezone</label>
+                    <Select value={timezone} onValueChange={setTimezone}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={Intl.DateTimeFormat().resolvedOptions().timeZone}>
+                          {Intl.DateTimeFormat().resolvedOptions().timeZone} (Local)
+                        </SelectItem>
+                        <SelectItem value="UTC">UTC</SelectItem>
+                        <SelectItem value="America/New_York">Eastern Time (US)</SelectItem>
+                        <SelectItem value="America/Los_Angeles">Pacific Time (US)</SelectItem>
+                        <SelectItem value="Europe/London">London (UK)</SelectItem>
+                        <SelectItem value="Asia/Kolkata">India Standard Time</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -314,7 +350,9 @@ export default function CreateCampaignPage() {
               </div>
               <div className="space-y-1">
                 <span className="text-sm text-[var(--muted-foreground)]">Schedule</span>
-                <p className="font-medium">{scheduleType === 'NOW' ? 'Immediately' : 'Scheduled'}</p>
+                <p className="font-medium">
+                  {scheduleType === 'NOW' ? 'Immediately' : `${format(new Date(scheduledAt || Date.now()), "PPp")} (${timezone})`}
+                </p>
               </div>
             </div>
           </div>

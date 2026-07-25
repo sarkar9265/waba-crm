@@ -154,6 +154,46 @@ export class ContactsService {
     return { success: true };
   }
 
+  async findDuplicates(clientId: string) {
+    // Basic duplicate detection by identical phone or identical email (if exists)
+    // We can group them by phone
+    const contacts = await this.prisma.contact.findMany({ where: { clientId } });
+    const byPhone: Record<string, any[]> = {};
+    const byEmail: Record<string, any[]> = {};
+
+    contacts.forEach(c => {
+      if (c.phone) {
+        if (!byPhone[c.phone]) byPhone[c.phone] = [];
+        byPhone[c.phone].push(c);
+      }
+      if (c.email) {
+        if (!byEmail[c.email]) byEmail[c.email] = [];
+        byEmail[c.email].push(c);
+      }
+    });
+
+    const duplicates: { reason: string; contacts: any[] }[] = [];
+    
+    for (const phone in byPhone) {
+      if (byPhone[phone].length > 1) {
+        duplicates.push({ reason: 'Identical Phone', contacts: byPhone[phone] });
+      }
+    }
+
+    for (const email in byEmail) {
+      if (byEmail[email].length > 1) {
+        // avoid adding the same pair if already caught by phone
+        const duplicateIds = byEmail[email].map(c => c.id).sort().join(',');
+        const alreadyFound = duplicates.some(d => d.contacts.map((c:any) => c.id).sort().join(',') === duplicateIds);
+        if (!alreadyFound) {
+          duplicates.push({ reason: 'Identical Email', contacts: byEmail[email] });
+        }
+      }
+    }
+
+    return duplicates;
+  }
+
   async getTimeline(clientId: string, id: string) {
     // Fetch conversations and messages related to the contact
     const conversations = await this.prisma.conversation.findMany({

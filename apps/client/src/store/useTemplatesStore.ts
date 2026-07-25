@@ -27,7 +27,7 @@ interface TemplatesState {
   totalPages: number;
   loading: boolean;
   
-  fetchTemplates: (query?: { page?: number; limit?: number; search?: string }) => Promise<void>;
+  fetchTemplates: (query?: { page?: number; limit?: number; search?: string; status?: string; category?: string; language?: string }) => Promise<void>;
   createTemplate: (data: Partial<Template>) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   syncTemplate: (id: string) => Promise<void>;

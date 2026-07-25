@@ -46,33 +46,33 @@ enum NotificationType {
 }
 
 model Notification {
-  id        String           @id @default(cuid())
-  title     String
-  message   String
-  type      NotificationType @default(INFO)
-  isRead    Boolean          @default(false)
+  id      String           @id @default(cuid())
+  title   String
+  message String
+  type    NotificationType @default(INFO)
+  isRead  Boolean          @default(false)
 
-  userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   action     String
   entityId   String?
   entityType String?
   details    Json?
 
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  clientId   String
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 // -----------------------------------------------------------------------------
@@ -96,6 +96,7 @@ model Client {
   smtpPassword   String?
   apiKeys        String?
   refreshToken   String?
+  zohoCustomerId String?
 
   // Relations
   users         User[]
@@ -110,6 +111,7 @@ model Client {
   invoices      Invoice[]
   auditLogs     AuditLog[]
   media         Media[]
+  knowledgeBase KnowledgeBase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -132,8 +134,10 @@ model Subscription {
   clientId String
   client   Client @relation(fields: [clientId], references: [id])
 
-  status    SubStatus @default(TRIAL)
-  expiresAt DateTime?
+  status                SubStatus @default(TRIAL)
+  expiresAt             DateTime?
+  trialEndsAt           DateTime?
+  gatewaySubscriptionId String?   @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -143,6 +147,11 @@ model Plan {
   id    String @id @default(cuid())
   name  String // Starter, Professional, Business, Enterprise
   price Float
+
+  gatewayPlanId String?
+  maxContacts   Int     @default(500)
+  maxCampaigns  Int     @default(1)
+  maxAgents     Int     @default(1)
 
   subscriptions Subscription[]
 }
@@ -155,36 +164,64 @@ enum SubStatus {
 }
 
 model Transaction {
-  id                String   @id @default(cuid())
-  amount            Float
-  currency          String   @default("INR")
-  status            String   // e.g. "SUCCESS", "FAILED"
-  razorpayOrderId   String?
-  razorpayPaymentId String?  @unique
-  razorpaySignature String?
+  id                 String         @id @default(cuid())
+  amount             Float
+  currency           String         @default("INR")
+  status             String // e.g. "SUCCESS", "FAILED"
+  gateway            PaymentGateway @default(RAZORPAY)
+  razorpayOrderId    String?
+  razorpayPaymentId  String?        @unique
+  razorpaySignature  String?
+  paytmOrderId       String?        @unique
+  paytmTransactionId String?        @unique
 
-  clientId          String
-  client            Client   @relation(fields: [clientId], references: [id])
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  invoice           Invoice?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice Invoice?
 }
 
 model Invoice {
-  id            String      @id @default(cuid())
-  invoiceNumber String      @unique
+  id            String  @id @default(cuid())
+  invoiceNumber String  @unique
   url           String?
-  
-  clientId      String
-  client        Client      @relation(fields: [clientId], references: [id])
-  
+
+  subtotal       Float?
+  taxAmount      Float?
+  discountAmount Float?
+  total          Float?
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   transactionId String      @unique
   transaction   Transaction @relation(fields: [transactionId], references: [id])
 
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------------
+// Coupons
+// -----------------------------------------------------------------------------
+
+model Coupon {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  discountPercent Float
+  isActive        Boolean   @default(true)
+  expiresAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PaymentGateway {
+  RAZORPAY
+  PAYTM
 }
 
 // -----------------------------------------------------------------------------
@@ -265,6 +302,10 @@ model Conversation {
   labels        String[]  @default([])
   internalNotes String?
 
+  botStatus BotStatus @default(ACTIVE)
+  sentiment String?
+  leadScore Int?
+
   assignedToId String?
   assignedTo   User?   @relation(fields: [assignedToId], references: [id])
 
@@ -276,6 +317,11 @@ enum ConvStatus {
   OPEN
   CLOSED
   SNOOZED
+}
+
+enum BotStatus {
+  ACTIVE
+  HANDOFF
 }
 
 model Message {
@@ -305,8 +351,14 @@ model Message {
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies   Message[] @relation("MessageReplies")
 
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  sentiment String?
+
   @@index([conversationId])
   @@index([status])
+  @@index([campaignId])
 }
 
 enum MsgDirection {
@@ -371,6 +423,8 @@ model Campaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  messages Message[]
 }
 
 enum CampaignStatus {
@@ -395,11 +449,11 @@ model Automation {
   edges             Json?
   isActive          Boolean @default(false)
 
-  clientId          String
-  client            Client  @relation(fields: [clientId], references: [id])
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // -----------------------------------------------------------------------------
@@ -413,15 +467,15 @@ enum WebhookStatus {
 }
 
 model WebhookLog {
-  id        String        @id @default(cuid())
-  payload   Json
-  status    WebhookStatus @default(PENDING)
-  attempts  Int           @default(0)
-  error     String?
-  event     String?
+  id       String        @id @default(cuid())
+  payload  Json
+  status   WebhookStatus @default(PENDING)
+  attempts Int           @default(0)
+  error    String?
+  event    String?
 
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
 }
@@ -453,10 +507,27 @@ model Media {
   type         MediaType
   provider     StorageProvider @default(LOCAL)
   url          String
-  
-  clientId     String
-  client       Client          @relation(fields: [clientId], references: [id])
-  
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------------
+// AI & Knowledge Base
+// -----------------------------------------------------------------------------
+
+model KnowledgeBase {
+  id       String  @id @default(cuid())
+  title    String
+  content  String
+  isActive Boolean @default(true)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

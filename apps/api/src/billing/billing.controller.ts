@@ -28,9 +28,9 @@ export class BillingController {
   @ApiOperation({ summary: 'Create a Razorpay Order for subscription' })
   @ApiResponse({ status: 201, description: 'Order created successfully' })
   @Post('create-order')
-  async createOrder(@Req() req: any, @Body() body: { planName: string, amount: number }) {
-    const { planName, amount } = body;
-    return this.billingService.createOrder(req.user.clientId, planName, amount);
+  async createOrder(@Req() req: any, @Body() body: { planName: string, amount: number, gateway?: string, couponCode?: string }) {
+    const { planName, amount, gateway, couponCode } = body;
+    return this.billingService.createOrder(req.user.clientId, planName, amount, gateway, couponCode);
   }
 
   // Webhook is generally called directly by Razorpay, so no JwtAuthGuard here
@@ -43,6 +43,15 @@ export class BillingController {
       console.error('Webhook error:', error);
       return res.status(HttpStatus.BAD_REQUEST).send();
     }
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('coupon/:code')
+  async validateCoupon(@Param('code') code: string) {
+    const coupon = await this.billingService.validateCoupon(code);
+    if (!coupon) throw new HttpException('Invalid or expired coupon', HttpStatus.BAD_REQUEST);
+    return coupon;
   }
 
   @ApiBearerAuth()

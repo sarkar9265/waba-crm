@@ -59,6 +59,10 @@ export default function BillingPage() {
   const [isRazorpayLoaded, setIsRazorpayLoaded] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'plans' | 'history'>('plans');
+  const [gateway, setGateway] = useState<'RAZORPAY'|'PAYTM'>('RAZORPAY');
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [couponError, setCouponError] = useState('');
   
   const [subscription, setSubscription] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -105,8 +109,29 @@ export default function BillingPage() {
       // 1. Create order on backend via authenticated API
       const { data: order } = await api.post('/billing/create-order', {
         planName: plan.name,
-        amount: plan.price
+        amount: plan.price,
+        gateway: gateway,
+        couponCode: appliedCoupon ? appliedCoupon.code : undefined
       });
+
+      if (gateway === 'PAYTM') {
+        // Mock Paytm flow
+        alert(`Redirecting to Paytm with Order ID: ${order.id}. Total: ₹${order.total}`);
+        // Simulate success webhook
+        await api.post('/billing/webhook', {
+          paytm_order_id: order.id,
+          paytm_transaction_id: `PTM_TXN_${Date.now()}`,
+          clientId: subscription?.clientId || 'unknown',
+          planName: plan.name,
+          amount: order.total,
+          subtotal: order.subtotal,
+          tax: order.tax,
+          discount: appliedCoupon ? (plan.price - order.subtotal) : 0,
+        });
+        alert(`Successfully subscribed to ${plan.name} plan via Paytm!`);
+        fetchBillingData();
+        return;
+      }
 
       // 2. Initialize Razorpay Checkout
       const options = {
@@ -119,7 +144,15 @@ export default function BillingPage() {
         handler: async function (response: any) {
           try {
             // Post to webhook manually if needed, or rely on Razorpay webhook
-            await api.post('/billing/webhook', response);
+            await api.post('/billing/webhook', {
+              ...response,
+              clientId: subscription?.clientId,
+              planName: plan.name,
+              amount: order.total,
+              subtotal: order.subtotal,
+              tax: order.tax,
+              discount: appliedCoupon ? (plan.price - order.subtotal) : 0,
+            });
             alert(`Successfully subscribed to ${plan.name} plan!`);
             fetchBillingData(); // refresh
           } catch (e) {
@@ -166,6 +199,18 @@ export default function BillingPage() {
     }
   };
 
+  const applyCoupon = async () => {
+    if (!couponCode) return;
+    setCouponError('');
+    try {
+      const res = await api.get(`/billing/coupon/${couponCode}`);
+      setAppliedCoupon(res.data);
+    } catch (e: any) {
+      setCouponError(e.response?.data?.message || 'Invalid Coupon');
+      setAppliedCoupon(null);
+    }
+  };
+
   if (isLoading) {
     return <div className="p-8 text-center text-[var(--muted-foreground)]">Loading billing info...</div>;
   }
@@ -207,7 +252,39 @@ export default function BillingPage() {
       </div>
 
       {activeTab === 'plans' && (
-        <div className="grid md:grid-cols-3 gap-8 pt-4">
+        <>
+          <div className="bg-[var(--card)] p-4 rounded-lg border border-[var(--border)] mb-6 flex flex-col md:flex-row gap-8 items-start md:items-center">
+            <div>
+              <h3 className="font-semibold mb-2">Payment Gateway</h3>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="gateway" checked={gateway === 'RAZORPAY'} onChange={() => setGateway('RAZORPAY')} />
+                  Razorpay
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="gateway" checked={gateway === 'PAYTM'} onChange={() => setGateway('PAYTM')} />
+                  Paytm
+                </label>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold mb-2">Discount Coupon</h3>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={couponCode} 
+                  onChange={(e) => setCouponCode(e.target.value)} 
+                  placeholder="Enter Code"
+                  className="px-3 py-2 border rounded-md bg-transparent"
+                />
+                <Button variant="outline" onClick={applyCoupon}>Apply</Button>
+              </div>
+              {appliedCoupon && <p className="text-emerald-500 text-sm mt-1">Coupon {appliedCoupon.code} applied ({appliedCoupon.discountPercent}% off)!</p>}
+              {couponError && <p className="text-red-500 text-sm mt-1">{couponError}</p>}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 pt-4">
           {PLANS.map((plan) => (
             <Card 
               key={plan.name} 
@@ -249,6 +326,19 @@ export default function BillingPage() {
                 </ul>
                 
                 <div className="pt-8 mt-auto">
+                  {appliedCoupon && (
+                    <div className="text-xs text-[var(--muted-foreground)] mb-2 text-center">
+                      Subtotal: ₹{(plan.price - (plan.price * appliedCoupon.discountPercent / 100)).toLocaleString('en-IN')} <br/>
+                      + 18% GST: ₹{((plan.price - (plan.price * appliedCoupon.discountPercent / 100)) * 0.18).toLocaleString('en-IN')} <br/>
+                      Total: ₹{((plan.price - (plan.price * appliedCoupon.discountPercent / 100)) * 1.18).toLocaleString('en-IN')}
+                    </div>
+                  )}
+                  {!appliedCoupon && (
+                    <div className="text-xs text-[var(--muted-foreground)] mb-2 text-center">
+                      + 18% GST: ₹{(plan.price * 0.18).toLocaleString('en-IN')} <br/>
+                      Total: ₹{(plan.price * 1.18).toLocaleString('en-IN')}
+                    </div>
+                  )}
                   <Button 
                     className={`w-full ${plan.highlight ? '' : 'variant-outline'}`}
                     variant={plan.highlight ? 'default' : 'outline'}
@@ -256,13 +346,14 @@ export default function BillingPage() {
                     onClick={() => handleCheckout(plan)}
                     disabled={loadingPlan === plan.name}
                   >
-                    {loadingPlan === plan.name ? 'Processing...' : 'Subscribe'}
+                    {loadingPlan === plan.name ? 'Processing...' : `Subscribe via ${gateway === 'RAZORPAY' ? 'Razorpay' : 'Paytm'}`}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
+        </>
       )}
 
       {activeTab === 'history' && (

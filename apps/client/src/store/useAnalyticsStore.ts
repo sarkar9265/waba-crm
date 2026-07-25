@@ -6,6 +6,17 @@ export interface DashboardMetrics {
   totalContacts: number;
   activeCampaigns: number;
   messagesToday: number;
+  closedConversations: number;
+  pendingConversations: number;
+  newContacts: number;
+  revenue: number;
+  activeAgents: number;
+  campaignPerformance: {
+    sent: number;
+    delivered: number;
+    read: number;
+    failed: number;
+  };
 }
 
 export interface ChartDataPoint {
@@ -13,6 +24,11 @@ export interface ChartDataPoint {
   messages: number;
   inbound: number;
   outbound: number;
+  deliveryRate: number;
+  readRate: number;
+  replyRate: number;
+  responseTime: number;
+  campaignRoi: number;
 }
 
 export interface ActiveCampaign {

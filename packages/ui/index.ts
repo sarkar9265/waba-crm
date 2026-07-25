@@ -16,4 +16,6 @@ export * from "./src/components/table";
 export * from "./src/components/tabs";
 export * from "./src/components/tooltip";
 export * from "./src/components/scroll-area";
+export * from "./src/components/label";
+export * from "./src/components/popover";
 export * from "./src/lib/utils";

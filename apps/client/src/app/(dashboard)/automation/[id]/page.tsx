@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, Connection, Edge, Node, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { api } from '@/lib/api';
 import { Button, Card } from '@algo-matrix/ui';
-import { ArrowLeft, Save, MessageSquare, Clock, Zap, Bot, UserPlus } from 'lucide-react';
+import { ArrowLeft, Save, MessageSquare, Clock, Zap, Bot, UserPlus, GitBranch, Globe, Webhook, Octagon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+
+import { 
+  TriggerNode, 
+  ActionNode, 
+  ConditionNode, 
+  ApiRequestNode, 
+  WebhookNode, 
+  EndNode 
+} from '@/components/automation/nodes';
+import { NodeConfigSidebar } from '@/components/automation/NodeConfigSidebar';
 
 const initialNodes: Node[] = [
   {
     id: 'trigger-1',
-    type: 'input',
+    type: 'triggerNode',
     data: { label: 'Incoming Message' },
     position: { x: 250, y: 5 },
-    className: 'bg-primary text-primary-foreground font-bold border-2 border-primary rounded-md p-2',
   },
 ];
 
@@ -26,6 +35,17 @@ function FlowCanvas({ automationId }: { automationId: string }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const nodeTypes = useMemo(() => ({
+    triggerNode: TriggerNode,
+    actionNode: ActionNode,
+    conditionNode: ConditionNode,
+    apiRequestNode: ApiRequestNode,
+    webhookNode: WebhookNode,
+    endNode: EndNode,
+  }), []);
 
   useEffect(() => {
     fetchAutomation();
@@ -45,7 +65,6 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           type: 'triggerNode',
           data: { label: res.data.triggerType.replace('_', ' ') },
           position: { x: 250, y: 50 },
-          className: 'bg-blue-600 text-white font-bold border-2 border-blue-800 rounded-md p-3 shadow-lg',
         }]);
       }
     } catch (error) {
@@ -79,6 +98,8 @@ function FlowCanvas({ automationId }: { automationId: string }) {
       let label = 'Action';
       let actionType = '';
       
+      let typeNode = 'actionNode';
+      
       switch (type) {
         case 'reply':
           label = 'Send Message';
@@ -96,14 +117,29 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           label = 'Assign Agent';
           actionType = 'assign_agent';
           break;
+        case 'condition':
+          typeNode = 'conditionNode';
+          label = 'Condition';
+          break;
+        case 'api_request':
+          typeNode = 'apiRequestNode';
+          label = 'API Request';
+          break;
+        case 'webhook':
+          typeNode = 'webhookNode';
+          label = 'Webhook';
+          break;
+        case 'end_flow':
+          typeNode = 'endNode';
+          label = 'End Flow';
+          break;
       }
 
       const newNode: Node = {
         id: `node_${new Date().getTime()}`,
-        type: 'actionNode',
+        type: typeNode,
         position,
         data: { label, actionType, text: type === 'reply' ? 'Hello from automation!' : undefined },
-        className: 'bg-card text-card-foreground border-2 border-muted rounded-md p-3 shadow-md min-w-[150px]',
       };
 
       setNodes((nds) => nds.concat(newNode));
@@ -122,6 +158,23 @@ function FlowCanvas({ automationId }: { automationId: string }) {
       toast.error('Failed to save workflow');
     }
   };
+
+  const updateNodeData = useCallback((nodeId: string, data: any) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          node.data = { ...node.data, ...data };
+        }
+        return node;
+      })
+    );
+  }, [setNodes]);
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id);
+  }, []);
+
+  const selectedNode = useMemo(() => nodes.find(n => n.id === selectedNodeId), [nodes, selectedNodeId]);
 
   if (loading) return <div className="p-8">Loading builder...</div>;
 
@@ -183,6 +236,42 @@ function FlowCanvas({ automationId }: { automationId: string }) {
             <UserPlus className="h-5 w-5 mr-3 text-green-500" />
             <span className="font-medium">Assign Agent</span>
           </div>
+
+          <div 
+            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'condition')}
+          >
+            <GitBranch className="h-5 w-5 mr-3 text-orange-500" />
+            <span className="font-medium">Condition</span>
+          </div>
+
+          <div 
+            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'api_request')}
+          >
+            <Globe className="h-5 w-5 mr-3 text-indigo-500" />
+            <span className="font-medium">API Request</span>
+          </div>
+
+          <div 
+            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'webhook')}
+          >
+            <Webhook className="h-5 w-5 mr-3 text-pink-500" />
+            <span className="font-medium">Webhook</span>
+          </div>
+
+          <div 
+            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'end_flow')}
+          >
+            <Octagon className="h-5 w-5 mr-3 text-slate-800 dark:text-slate-200" />
+            <span className="font-medium">End Flow</span>
+          </div>
           
           <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-800 dark:text-blue-300">
             <p><strong>Tip:</strong> Drag actions from this panel onto the canvas to build your workflow.</p>
@@ -194,17 +283,28 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onDrop={onDrop}
             onDragOver={onDragOver}
+            onNodeClick={onNodeClick}
+            onPaneClick={() => setSelectedNodeId(null)}
             fitView
           >
             <Controls />
             <MiniMap />
             <Background gap={12} size={1} />
           </ReactFlow>
+          
+          {selectedNode && (
+            <NodeConfigSidebar 
+              node={selectedNode} 
+              updateNodeData={updateNodeData} 
+              onClose={() => setSelectedNodeId(null)} 
+            />
+          )}
         </div>
       </div>
     </div>

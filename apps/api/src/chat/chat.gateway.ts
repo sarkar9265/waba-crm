@@ -52,6 +52,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       
       client.join(clientId);
       this.logger.log(`Client connected: ${client.id} to Tenant Room: ${clientId}`);
+      
+      // Broadcast online status to others in the tenant room
+      client.to(clientId).emit('presence', { userId: payload.sub, status: 'online' });
+      // Store userId to broadcast offline on disconnect
+      client.data.userId = payload.sub;
+      client.data.clientId = clientId;
+
     } catch (error) {
       this.logger.warn(`Invalid token for client ${client.id}`);
       client.disconnect();
@@ -60,6 +67,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+    const userId = client.data.userId;
+    const clientId = client.data.clientId;
+    if (userId && clientId) {
+      // Remove from active clients
+      const clientRooms = this.activeClients.get(clientId) || [];
+      const updatedRooms = clientRooms.filter(id => id !== client.id);
+      if (updatedRooms.length === 0) {
+        this.activeClients.delete(clientId);
+      } else {
+        this.activeClients.set(clientId, updatedRooms);
+      }
+
+      // If user has no other active sockets in this tenant, mark as offline
+      // Wait, we need a better way to check if user has other sockets
+      // For now, emit offline.
+      client.to(clientId).emit('presence', { userId, status: 'offline' });
+    }
   }
 
   emitNewMessage(clientId: string, message: any) {

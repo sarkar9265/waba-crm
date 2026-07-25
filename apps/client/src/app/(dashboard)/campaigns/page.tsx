@@ -7,17 +7,26 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@algo-matrix/ui";
-import { Plus, Search, Megaphone, PlayCircle, PauseCircle, RefreshCw, MoreHorizontal, Loader2, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Search, Megaphone, PlayCircle, PauseCircle, RefreshCw, MoreHorizontal, Loader2, Clock, CheckCircle2, AlertCircle, Activity } from "lucide-react";
 import { useCampaignsStore } from "@/store/useCampaignsStore";
 import { format } from "date-fns";
+import { api } from "@/lib/api";
 
 export default function CampaignsPage() {
   const { campaigns, total, page, limit, totalPages, loading, fetchCampaigns, launchCampaign, pauseCampaign, resumeCampaign, retryCampaign } = useCampaignsStore();
   const [search, setSearch] = useState("");
+  const [queueStatus, setQueueStatus] = useState({ waiting: 0, active: 0, failed: 0 });
 
   useEffect(() => {
     fetchCampaigns({ page: 1, limit, search });
   }, [search]);
+
+  useEffect(() => {
+    const fetchQueue = () => api.get('/campaigns/queue-status').then(res => setQueueStatus(res.data)).catch(console.error);
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 15000); // refresh every 15s
+    return () => clearInterval(interval);
+  }, []);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -56,11 +65,37 @@ export default function CampaignsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
           <p className="text-[var(--muted-foreground)]">Create and manage your WhatsApp broadcast campaigns.</p>
         </div>
-        <Link href="/campaigns/create" passHref>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> Create Campaign
-          </Button>
-        </Link>
+        <div className="flex gap-4 items-center w-full sm:w-auto">
+          {/* Queue Monitor */}
+          <div className="hidden sm:flex items-center gap-4 px-4 py-2 bg-[var(--accent)]/50 rounded-lg border border-[var(--border)] text-sm">
+            <div className="flex items-center gap-2 text-[var(--muted-foreground)]">
+              <Activity className="h-4 w-4" /> Queue:
+            </div>
+            <div className="flex gap-3 font-medium">
+              <span className="text-blue-500">{queueStatus.active} Active</span>
+              <span className="text-amber-500">{queueStatus.waiting} Waiting</span>
+              {queueStatus.failed > 0 && <span className="text-red-500">{queueStatus.failed} Failed</span>}
+            </div>
+          </div>
+          
+          <Link href="/campaigns/create" passHref>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> Create Campaign
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Mobile Queue Monitor */}
+      <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-[var(--accent)]/50 rounded-lg border border-[var(--border)] text-sm">
+        <div className="flex items-center gap-2 text-[var(--muted-foreground)]">
+          <Activity className="h-4 w-4" /> Queue:
+        </div>
+        <div className="flex gap-3 font-medium">
+          <span className="text-blue-500">{queueStatus.active} Active</span>
+          <span className="text-amber-500">{queueStatus.waiting} Waiting</span>
+          {queueStatus.failed > 0 && <span className="text-red-500">{queueStatus.failed} Failed</span>}
+        </div>
       </div>
 
       <Card className="p-0 overflow-hidden">
@@ -110,10 +145,10 @@ export default function CampaignsPage() {
               campaigns.map((campaign) => (
                 <TableRow key={campaign.id}>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <Link href={`/campaigns/${campaign.id}`} className="flex items-center gap-2 hover:underline">
                       <Megaphone className="h-4 w-4 text-[var(--muted-foreground)]" />
-                      <span className="font-medium">{campaign.name}</span>
-                    </div>
+                      <span className="font-medium text-[var(--primary)]">{campaign.name}</span>
+                    </Link>
                   </TableCell>
                   <TableCell>{getStatusBadge(campaign.status)}</TableCell>
                   <TableCell className="text-[var(--muted-foreground)] truncate max-w-[150px]">

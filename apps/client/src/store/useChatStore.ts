@@ -36,6 +36,7 @@ export type Message = {
   status: string;
   isDeleted: boolean;
   replyToId: string | null;
+  isPinned?: boolean;
   createdAt: string;
 };
 
@@ -49,6 +50,10 @@ interface ChatState {
   loadingMessages: Record<string, boolean>;
   hasMoreConversations: boolean;
   page: number;
+  hasMoreMessages: Record<string, boolean>;
+  messageCursors: Record<string, string | null>;
+  typingIndicators: Record<string, { userId: string; timestamp: number }[]>;
+  onlineUsers: string[];
 
   // Actions
   initializeSocket: () => void;
@@ -57,10 +62,15 @@ interface ChatState {
   fetchMoreConversations: (filters?: any) => Promise<void>;
   setActiveConversation: (id: string | null) => void;
   fetchMessages: (conversationId: string) => Promise<void>;
+  fetchMoreMessages: (conversationId: string) => Promise<void>;
   sendMessage: (conversationId: string, data: any) => Promise<void>;
+  updateMessage: (conversationId: string, messageId: string, data: any) => Promise<void>;
+  deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
   updateConversation: (id: string, data: any) => Promise<void>;
   bulkUpdateConversations: (ids: string[], data: any) => Promise<void>;
   fetchUsers: () => Promise<void>;
+  setTyping: (conversationId: string, isTyping: boolean) => void;
+  clearStaleTypingIndicators: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -73,6 +83,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingMessages: {},
   hasMoreConversations: true,
   page: 1,
+  hasMoreMessages: {},
+  messageCursors: {},
+  typingIndicators: {},
+  onlineUsers: [],
 
   initializeSocket: () => {
     const { socket } = get();
@@ -82,10 +96,58 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const newSocket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000', {
       auth: { token },
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     newSocket.on('connect', () => {
       console.log('Chat socket connected');
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('Chat socket disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        newSocket.connect(); // manually reconnect if server disconnected
+      }
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Chat socket connection error:', error);
+    });
+
+    newSocket.on('typing', (data: { conversationId: string, isTyping: boolean, userId: string }) => {
+      set((state) => {
+        const { conversationId, isTyping, userId } = data;
+        const currentIndicators = state.typingIndicators[conversationId] || [];
+        
+        let newIndicators = currentIndicators.filter(i => i.userId !== userId);
+        
+        if (isTyping) {
+          newIndicators.push({ userId, timestamp: Date.now() });
+        }
+        
+        return {
+          typingIndicators: {
+            ...state.typingIndicators,
+            [conversationId]: newIndicators
+          }
+        };
+      });
+    });
+
+    newSocket.on('presence', (data: { userId: string, status: 'online' | 'offline' }) => {
+      set((state) => {
+        let newOnline = [...state.onlineUsers];
+        if (data.status === 'online' && !newOnline.includes(data.userId)) {
+          newOnline.push(data.userId);
+        } else if (data.status === 'offline') {
+          newOnline = newOnline.filter(id => id !== data.userId);
+        }
+        return { onlineUsers: newOnline };
+      });
     });
 
     newSocket.on('new_message', (msg: Message) => {
@@ -210,13 +272,44 @@ export const useChatStore = create<ChatState>((set, get) => ({
   fetchMessages: async (conversationId: string) => {
     set((state) => ({ loadingMessages: { ...state.loadingMessages, [conversationId]: true } }));
     try {
-      const res = await api.get(`/chat/conversations/${conversationId}/messages`);
+      const res = await api.get(`/chat/conversations/${conversationId}/messages?limit=20`);
       set((state) => ({
-        messages: { ...state.messages, [conversationId]: res.data },
-        loadingMessages: { ...state.loadingMessages, [conversationId]: false }
+        messages: { ...state.messages, [conversationId]: res.data.messages || res.data },
+        loadingMessages: { ...state.loadingMessages, [conversationId]: false },
+        hasMoreMessages: { ...state.hasMoreMessages, [conversationId]: res.data.hasMore ?? false },
+        messageCursors: { ...state.messageCursors, [conversationId]: res.data.nextCursor ?? null }
       }));
     } catch (error) {
       console.error('Failed to fetch messages', error);
+      set((state) => ({ loadingMessages: { ...state.loadingMessages, [conversationId]: false } }));
+    }
+  },
+
+  fetchMoreMessages: async (conversationId: string) => {
+    const { messageCursors, hasMoreMessages, loadingMessages } = get();
+    if (!hasMoreMessages[conversationId] || loadingMessages[conversationId]) return;
+
+    const cursor = messageCursors[conversationId];
+    if (!cursor) return;
+
+    set((state) => ({ loadingMessages: { ...state.loadingMessages, [conversationId]: true } }));
+    try {
+      const res = await api.get(`/chat/conversations/${conversationId}/messages?limit=20&cursor=${cursor}`);
+      set((state) => {
+        const currentMessages = state.messages[conversationId] || [];
+        const newMessages = res.data.messages || res.data;
+        // Prepend because older messages come from cursor
+        // Wait, the API usually returns ascending? We need to make sure we don't duplicate
+        // Just prepend if it's returning older messages
+        return {
+          messages: { ...state.messages, [conversationId]: [...newMessages, ...currentMessages] },
+          loadingMessages: { ...state.loadingMessages, [conversationId]: false },
+          hasMoreMessages: { ...state.hasMoreMessages, [conversationId]: res.data.hasMore ?? false },
+          messageCursors: { ...state.messageCursors, [conversationId]: res.data.nextCursor ?? null }
+        };
+      });
+    } catch (error) {
+      console.error('Failed to fetch more messages', error);
       set((state) => ({ loadingMessages: { ...state.loadingMessages, [conversationId]: false } }));
     }
   },
@@ -275,6 +368,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  updateMessage: async (conversationId: string, messageId: string, data: any) => {
+    try {
+      const res = await api.patch(`/chat/messages/${messageId}`, data);
+      set((state) => {
+        const convMsgs = state.messages[conversationId] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [conversationId]: convMsgs.map(m => m.id === messageId ? { ...m, ...res.data } : m)
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Failed to update message', error);
+    }
+  },
+
+  deleteMessage: async (conversationId: string, messageId: string) => {
+    try {
+      await api.delete(`/chat/messages/${messageId}`);
+      set((state) => {
+        const convMsgs = state.messages[conversationId] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [conversationId]: convMsgs.filter(m => m.id !== messageId)
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Failed to delete message', error);
+    }
+  },
+
   updateConversation: async (id: string, data: any) => {
     try {
       const res = await api.patch(`/chat/conversations/${id}`, data);
@@ -308,5 +435,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       console.error('Failed to fetch users', error);
     }
+  },
+
+  setTyping: (conversationId: string, isTyping: boolean) => {
+    const { socket } = get();
+    if (socket) {
+      socket.emit('typing', { conversationId, isTyping });
+    }
+  },
+
+  clearStaleTypingIndicators: () => {
+    set((state) => {
+      const now = Date.now();
+      const updated: Record<string, { userId: string; timestamp: number }[]> = {};
+      let hasChanges = false;
+      
+      for (const [convId, indicators] of Object.entries(state.typingIndicators)) {
+        const valid = indicators.filter(i => now - i.timestamp < 5000); // 5 seconds expiry
+        if (valid.length !== indicators.length) hasChanges = true;
+        if (valid.length > 0) updated[convId] = valid;
+      }
+      
+      return hasChanges ? { typingIndicators: updated } : state;
+    });
   }
 }));

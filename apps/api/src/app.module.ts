@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
+import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { HealthModule } from './health/health.module';
     AuditLogModule,
     SearchModule,
     HealthModule,
+    KnowledgeBaseModule,
     PrometheusModule.register(),
     ThrottlerModule.forRoot([{
       ttl: 60000,
