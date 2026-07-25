@@ -3,11 +3,36 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { SanitizationInterceptor } from './common/interceptors/sanitization.interceptor';
+import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
+import * as Sentry from '@sentry/node';
+import helmet from 'helmet';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      tracesSampleRate: 1.0,
+    });
+  }
+
+  const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: true });
   
-  app.enableCors();
+  app.useLogger(app.get(Logger));
+  app.useGlobalInterceptors(
+    new LoggerErrorInterceptor(),
+    new SanitizationInterceptor()
+  );
+  
+  // Security Headers
+  app.use(helmet());
+  
+  // CORS Configuration
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN || '*', // Should be set to specific domains in production
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
   
   // Global Error Handling
   app.useGlobalFilters(new AllExceptionsFilter());

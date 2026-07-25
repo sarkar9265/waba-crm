@@ -127,7 +127,7 @@ export function GlobalSearch() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ──────────── Keyboard shortcut (Ctrl+K / Cmd+K) ────────────
   useEffect(() => {
@@ -173,14 +173,20 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
-    clearTimeout(debounceRef.current);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
     if (query.trim().length < 2) {
       setResults(null);
       return;
     }
     setIsLoading(true);
     debounceRef.current = setTimeout(() => doSearch(query), 300);
-    return () => clearTimeout(debounceRef.current);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
   }, [query, doSearch]);
 
   // ──────────── Build flat list of navigable items ────────────
@@ -252,7 +258,7 @@ export function GlobalSearch() {
     return (
       <div className="flex items-center gap-3">
         {c.avatarUrl ? (
-          <img src={c.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+          <Image src={c.avatarUrl} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
         ) : (
           <div className="h-8 w-8 rounded-full bg-blue-500/15 flex items-center justify-center text-xs font-bold text-blue-400">
             {contactDisplayName(c).charAt(0).toUpperCase()}

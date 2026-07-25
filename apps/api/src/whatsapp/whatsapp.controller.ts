@@ -1,13 +1,21 @@
-import { Controller, Get, Post, Delete, Body, Query, Param, Res, HttpStatus, Logger, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Query, Param, Res, HttpStatus, Logger, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import type { Response, Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { PrismaService } from '../prisma/prisma.service';
+import * as crypto from 'crypto';
 
 @Controller('webhook/whatsapp')
 export class WhatsappController {
   private readonly logger = new Logger(WhatsappController.name);
 
-  constructor(private readonly whatsappService: WhatsappService) {}
+  constructor(
+    private readonly whatsappService: WhatsappService,
+    private readonly prisma: PrismaService,
+    @InjectQueue('webhook') private readonly webhookQueue: Queue
+  ) {}
 
   /**
    * Endpoint for Meta to verify the webhook
@@ -89,21 +97,56 @@ export class WhatsappController {
    * Endpoint to receive incoming WhatsApp messages and events
    */
   @Post()
-  async handleIncomingMessage(@Body() body: any, @Req() req: Request, @Res() res: Response) {
+  async handleIncomingMessage(@Req() req: Request, @Res() res: Response) {
     this.logger.log('Received WhatsApp Webhook event');
+
+    // 1. Signature Validation
+    const signature = req.headers['x-hub-signature-256'] as string;
+    const rawBody = (req as any).rawBody; // Assumes rawBody is enabled in main.ts
+    const appSecret = process.env.META_APP_SECRET;
+
+    if (appSecret && signature && rawBody) {
+      const expectedSignature = `sha256=${crypto
+        .createHmac('sha256', appSecret)
+        .update(rawBody)
+        .digest('hex')}`;
+      
+      if (signature !== expectedSignature) {
+        this.logger.warn('Webhook signature validation failed');
+        // Meta expects us to just ignore or return error if signature doesn't match
+        return res.status(HttpStatus.UNAUTHORIZED).send('Invalid signature');
+      }
+    }
+
+    const body = req.body;
 
     // Ensure it's a WhatsApp API event
     if (body.object === 'whatsapp_business_account') {
       try {
+        // Log the payload to the database
+        const webhookLog = await this.prisma.webhookLog.create({
+          data: {
+            payload: body,
+            status: 'PENDING',
+            event: body.entry?.[0]?.changes?.[0]?.field || 'unknown',
+          }
+        });
+
+        // Add to BullMQ for reliable processing
+        await this.webhookQueue.add('process', {
+          payload: body,
+          webhookLogId: webhookLog.id,
+        }, {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2000 }, // Dead Letter Queue via retries
+        });
+
         // Send OK response immediately to Meta (must respond within 20s)
         res.sendStatus(HttpStatus.OK);
-        
-        // Process the payload asynchronously
-        await this.whatsappService.processWebhookPayload(body);
       } catch (error) {
-        this.logger.error(`Error processing webhook: ${error.message}`);
-        // If we didn't already send a response, we'd send a 500 here, 
-        // but Meta expects a 200 to acknowledge receipt regardless of processing success.
+        this.logger.error(`Error queuing webhook: ${error.message}`);
+        // We still return 200 to Meta so they don't block us, but the queue handles our internal processing
+        res.sendStatus(HttpStatus.OK);
       }
     } else {
       res.sendStatus(HttpStatus.NOT_FOUND);

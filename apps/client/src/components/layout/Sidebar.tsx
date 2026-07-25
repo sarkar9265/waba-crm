@@ -16,7 +16,8 @@ import {
   BarChart,
   CreditCard,
   ClipboardList,
-  ImageIcon
+  ImageIcon,
+  Activity
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -34,6 +35,7 @@ const navItems = [
   { name: "Settings", href: "/settings", icon: Settings },
   { name: "Team & Roles", href: "/team", icon: Users },
   { name: "Audit Logs", href: "/audit-logs", icon: ClipboardList },
+  { name: "Webhooks", href: "/webhooks", icon: Activity },
 ];
 
 export function Sidebar() {

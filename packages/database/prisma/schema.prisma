@@ -91,6 +91,12 @@ model Client {
   aiEnabled      Boolean @default(false)
   aiSystemPrompt String?
 
+  // Secrets (Encrypted at rest)
+  metaToken      String?
+  smtpPassword   String?
+  apiKeys        String?
+  refreshToken   String?
+
   // Relations
   users         User[]
   wabaAccounts  WabaAccount[]
@@ -232,6 +238,8 @@ model Contact {
   notes        String?
 
   @@unique([clientId, phone])
+  @@index([clientId, phone])
+  @@index([clientId, tags])
 }
 
 model Conversation {
@@ -259,6 +267,9 @@ model Conversation {
 
   assignedToId String?
   assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  @@index([clientId, status])
+  @@index([contactId])
 }
 
 enum ConvStatus {
@@ -293,6 +304,9 @@ model Message {
   replyToId String?
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies   Message[] @relation("MessageReplies")
+
+  @@index([conversationId])
+  @@index([status])
 }
 
 enum MsgDirection {
@@ -392,13 +406,24 @@ model Automation {
 // Webhooks & Auditing
 // -----------------------------------------------------------------------------
 
-model WebhookLog {
-  id        String  @id @default(cuid())
-  payload   Json
-  processed Boolean @default(false)
-  error     String?
+enum WebhookStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
 
-  createdAt DateTime @default(now())
+model WebhookLog {
+  id        String        @id @default(cuid())
+  payload   Json
+  status    WebhookStatus @default(PENDING)
+  attempts  Int           @default(0)
+  error     String?
+  event     String?
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status])
 }
 
 // -----------------------------------------------------------------------------

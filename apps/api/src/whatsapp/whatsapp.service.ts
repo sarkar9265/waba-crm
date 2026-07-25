@@ -169,14 +169,6 @@ export class WhatsappService {
    * Format reference: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
    */
   async processWebhookPayload(payload: any) {
-    // Log the payload to the database
-    await this.prisma.webhookLog.create({
-      data: {
-        payload: payload,
-        processed: false
-      }
-    });
-
     // Payload usually contains entries which contain changes
     for (const entry of payload.entry) {
       for (const change of entry.changes) {
