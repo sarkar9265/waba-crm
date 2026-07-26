@@ -45,7 +45,7 @@ export function Sidebar() {
     <div className="flex h-screen w-64 flex-col border-r bg-[var(--card)] px-4 py-6 shadow-sm">
       <WorkspaceSwitcher />
 
-      <nav className="flex-1 space-y-1">
+      <nav className="flex-1 space-y-1 overflow-y-auto min-h-0 scrollbar-thin">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -75,7 +75,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto px-2">
+      <div className="mt-4 px-2 shrink-0">
         <div className="rounded-xl bg-gradient-to-br from-[var(--primary)]/10 to-[var(--primary)]/5 p-4 border border-[var(--primary)]/20">
           <p className="text-xs font-semibold text-[var(--foreground)]">Trial Active</p>
           <p className="text-xs text-[var(--muted-foreground)] mt-1">14 days remaining</p>

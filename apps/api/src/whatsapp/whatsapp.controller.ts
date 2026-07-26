@@ -45,15 +45,16 @@ export class WhatsappController {
    */
   @UseGuards(JwtAuthGuard)
   @Post('oauth')
-  async handleOAuthCode(@Body('code') code: string, @Req() req: any) {
+  async handleOAuthCode(@Body() body: { code: string; type?: string }, @Req() req: any) {
     const clientId = req.user?.clientId;
+    const { code, type } = body;
     
     if (!code) {
-      return { success: false, error: 'No OAuth code provided' };
+      return { success: false, error: 'No OAuth code or access token provided' };
     }
 
     try {
-      const account = await this.whatsappService.exchangeOAuthCode(code, clientId);
+      const account = await this.whatsappService.exchangeOAuthCode(code, clientId, type || 'code');
       return { success: true, account };
     } catch (error) {
       this.logger.error(`OAuth exchange failed: ${error.message}`);

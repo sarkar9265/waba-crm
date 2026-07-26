@@ -10,6 +10,9 @@ out/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+.clerk/
 
 # IDE
 .vscode/

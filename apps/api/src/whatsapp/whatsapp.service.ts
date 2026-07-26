@@ -23,11 +23,14 @@ export class WhatsappService {
   ) {}
 
   /**
-   * Exchanges the Meta OAuth code for a System User Access Token
+   * Exchanges the Meta OAuth code/access token for a System User Access Token
    * and saves the linked WABA account to the database.
+   * @param codeOrToken - Either an OAuth code or a direct access token from Embedded Signup
+   * @param clientId - The tenant client ID
+   * @param type - 'code' or 'access_token' to specify the flow
    */
-  async exchangeOAuthCode(code: string, clientId: string) {
-    this.logger.log(`Exchanging OAuth code for client ${clientId}`);
+  async exchangeOAuthCode(codeOrToken: string, clientId: string, type: string = 'code') {
+    this.logger.log(`Exchanging OAuth ${type} for client ${clientId}`);
     
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
@@ -37,32 +40,42 @@ export class WhatsappService {
     }
 
     try {
-      // 1. Exchange code for user access token via Graph API
-      // Note: for embedded signup without a redirect_uri we might need to handle the token flow differently 
-      // depending on whether the frontend SDK gave us an access token directly or an OAuth code.
-      // We will assume the standard code exchange here.
-      const tokenUrl = `https://graph.facebook.com/${this.graphApiVersion}/oauth/access_token`;
-      const tokenResponse = await firstValueFrom(
-        this.httpService.get(tokenUrl, {
-          params: {
-            client_id: appId,
-            client_secret: appSecret,
-            code: code,
-          }
-        })
-      );
+      let userAccessToken: string;
+
+      if (type === 'access_token') {
+        // Embedded Signup flow — we already have the user access token
+        userAccessToken = codeOrToken;
+      } else {
+        // Standard OAuth code exchange flow
+        const tokenUrl = `https://graph.facebook.com/${this.graphApiVersion}/oauth/access_token`;
+        const tokenResponse = await firstValueFrom(
+          this.httpService.get(tokenUrl, {
+            params: {
+              client_id: appId,
+              client_secret: appSecret,
+              code: codeOrToken,
+            }
+          })
+        );
+        userAccessToken = tokenResponse.data.access_token;
+      }
       
-      const userAccessToken = tokenResponse.data.access_token;
-      
-      // 2. Fetch WABA details associated with the token
+      // Fetch WABA details associated with the token
       const wabaDetails = await this.fetchWabaDetails(userAccessToken);
       
-      // 3. Save to database
+      // Save the access token to the client record for future API calls
+      await this.prisma.client.update({
+        where: { id: clientId },
+        data: { metaToken: userAccessToken },
+      });
+      
+      // Upsert the WABA account
       const wabaAccount = await this.prisma.wabaAccount.upsert({
         where: { wabaId: wabaDetails.wabaId },
         update: {
           phoneNumberId: wabaDetails.phoneNumberId,
           displayPhoneNumber: wabaDetails.displayPhoneNumber,
+          displayName: wabaDetails.displayName || undefined,
           status: 'CONNECTED',
           appId: appId
         },
@@ -70,18 +83,36 @@ export class WhatsappService {
           wabaId: wabaDetails.wabaId,
           phoneNumberId: wabaDetails.phoneNumberId,
           displayPhoneNumber: wabaDetails.displayPhoneNumber,
+          displayName: wabaDetails.displayName || 'WhatsApp Business',
           status: 'CONNECTED',
+          qualityRating: 'GREEN',
           clientId: clientId,
           appId: appId
         }
       });
 
+      // Subscribe the app to this WABA's webhooks
+      try {
+        await firstValueFrom(
+          this.httpService.post(
+            `https://graph.facebook.com/${this.graphApiVersion}/${wabaDetails.wabaId}/subscribed_apps`,
+            null,
+            {
+              headers: { 'Authorization': `Bearer ${userAccessToken}` }
+            }
+          )
+        );
+        this.logger.log(`Subscribed app to WABA ${wabaDetails.wabaId} webhooks`);
+      } catch (subError: any) {
+        this.logger.warn(`Failed to subscribe to WABA webhooks: ${subError.message}`);
+      }
+
       return wabaAccount;
     } catch (error: any) {
-      this.logger.error(`Error exchanging OAuth code: ${error?.response?.data?.error?.message || error.message}`);
+      this.logger.error(`Error exchanging OAuth ${type}: ${error?.response?.data?.error?.message || error.message}`);
       
-      // MOCK FALLBACK FOR LOCAL TESTING (since we don't have a real Meta App configured in local env)
-      if (process.env.NODE_ENV !== 'production' && (!appId || !appSecret || error.response?.status >= 400)) {
+      // MOCK FALLBACK FOR LOCAL TESTING ONLY
+      if (process.env.NODE_ENV !== 'production') {
         this.logger.warn('Falling back to MOCK WABA Account generation for local testing');
         
         const mockPhoneId = `mock_phone_${Math.floor(Math.random() * 1000000)}`;
@@ -120,9 +151,6 @@ export class WhatsappService {
       throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
     }
 
-    // In a real implementation, we might want to also call the Graph API to revoke permissions
-    // https://graph.facebook.com/v19.0/{user-id}/permissions
-
     await this.prisma.wabaAccount.delete({
       where: { id: accountId }
     });
@@ -131,37 +159,66 @@ export class WhatsappService {
   }
 
   private async fetchWabaDetails(token: string) {
-    // 1. Use the token to fetch the businesses the user has access to, 
-    // or specifically the WhatsApp Business Accounts they just shared.
-    // In Embedded Signup, you often query the /me/accounts or /debug_token to find associated assets.
-    // We will query the WABA IDs shared.
-    
     try {
-      const url = `https://graph.facebook.com/${this.graphApiVersion}/debug_token`;
-      const appAccessToken = `${process.env.META_APP_ID}|${process.env.META_APP_SECRET}`;
-      
-      const debugResponse = await firstValueFrom(
-        this.httpService.get(url, {
-          params: {
-            input_token: token,
-            access_token: appAccessToken
-          }
+      // Step 1: Get the user's businesses
+      const businessesRes = await firstValueFrom(
+        this.httpService.get(`https://graph.facebook.com/${this.graphApiVersion}/me/businesses`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          params: { fields: 'id,name' }
         })
       );
 
-      // In a real flow, you would query the assigned WABA accounts using the WABA API.
-      // Example: GET /me/businesses then GET /{business-id}/owned_whatsapp_business_accounts
-      // For this implementation, we simulate extracting the WABA ID that was just shared.
+      const businesses = businessesRes.data?.data || [];
+      if (businesses.length === 0) {
+        throw new Error('No businesses found for this user');
+      }
+
+      // Step 2: For the first business, get owned WABA accounts
+      const businessId = businesses[0].id;
+      const wabaRes = await firstValueFrom(
+        this.httpService.get(
+          `https://graph.facebook.com/${this.graphApiVersion}/${businessId}/owned_whatsapp_business_accounts`,
+          {
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: { fields: 'id,name,currency,timezone_id' }
+          }
+        )
+      );
+
+      const wabaAccounts = wabaRes.data?.data || [];
+      if (wabaAccounts.length === 0) {
+        throw new Error('No WhatsApp Business Accounts found for this business');
+      }
+
+      const wabaId = wabaAccounts[0].id;
+
+      // Step 3: Get phone numbers for this WABA
+      const phoneRes = await firstValueFrom(
+        this.httpService.get(
+          `https://graph.facebook.com/${this.graphApiVersion}/${wabaId}/phone_numbers`,
+          {
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: { fields: 'id,display_phone_number,verified_name,quality_rating' }
+          }
+        )
+      );
+
+      const phoneNumbers = phoneRes.data?.data || [];
+      if (phoneNumbers.length === 0) {
+        throw new Error('No phone numbers registered for this WABA');
+      }
+
+      const phone = phoneNumbers[0];
       
-      // MOCK EXTRACTION (replace with actual graph queries in production)
       return {
-        wabaId: '104928475930281',
-        phoneNumberId: '8472938475',
-        displayPhoneNumber: '+1 (555) 019-2834',
+        wabaId: wabaId,
+        phoneNumberId: phone.id,
+        displayPhoneNumber: phone.display_phone_number,
+        displayName: phone.verified_name || wabaAccounts[0].name,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error fetching WABA details: ${error.response?.data?.error?.message || error.message}`);
-      throw new HttpException('Failed to fetch WABA details', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Failed to fetch WABA details from Meta', HttpStatus.BAD_REQUEST);
     }
   }
 

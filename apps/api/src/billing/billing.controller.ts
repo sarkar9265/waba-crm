@@ -1,12 +1,15 @@
-import { Controller, Get, Post, Body, Req, Res, HttpStatus, UseGuards, Param, HttpException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req, Res, HttpStatus, UseGuards, Param, HttpException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import * as crypto from 'crypto';
 
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
+  private readonly logger = new Logger(BillingController.name);
+  
   constructor(private readonly billingService: BillingService) {}
 
   @ApiBearerAuth()
@@ -28,19 +31,55 @@ export class BillingController {
   @ApiOperation({ summary: 'Create a Razorpay Order for subscription' })
   @ApiResponse({ status: 201, description: 'Order created successfully' })
   @Post('create-order')
-  async createOrder(@Req() req: any, @Body() body: { planName: string, amount: number, gateway?: string, couponCode?: string }) {
-    const { planName, amount, gateway, couponCode } = body;
-    return this.billingService.createOrder(req.user.clientId, planName, amount, gateway, couponCode);
+  async createOrder(@Req() req: any, @Body() body: { planName: string, gateway?: string, couponCode?: string }) {
+    const { planName, gateway, couponCode } = body;
+    return this.billingService.createOrder(req.user.clientId, planName, gateway, couponCode);
   }
 
-  // Webhook is generally called directly by Razorpay, so no JwtAuthGuard here
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Verify a completed Razorpay checkout' })
+  @Post('verify')
+  async verifyPayment(@Req() req: any, @Body() body: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) {
+    return this.billingService.verifyPayment(req.user.clientId, body);
+  }
+
+  // Razorpay server-to-server webhook — no JWT auth, verified by signature
   @Post('webhook')
   async handleRazorpayWebhook(@Req() req: Request, @Res() res: Response) {
     try {
+      // Verify Razorpay webhook signature
+      const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+      const signature = req.headers['x-razorpay-signature'] as string;
+      const rawBody = (req as any).rawBody;
+
+      if (webhookSecret && rawBody) {
+        if (!signature) {
+          this.logger.warn('Razorpay webhook received without signature header');
+          return res.status(HttpStatus.UNAUTHORIZED).send('Missing signature');
+        }
+
+        const expectedSignature = crypto
+          .createHmac('sha256', webhookSecret)
+          .update(rawBody)
+          .digest('hex');
+
+        if (signature !== expectedSignature) {
+          this.logger.warn('Razorpay webhook signature verification failed');
+          return res.status(HttpStatus.UNAUTHORIZED).send('Invalid signature');
+        }
+      } else if (!webhookSecret) {
+        this.logger.warn('RAZORPAY_WEBHOOK_SECRET not configured — webhook signature verification skipped');
+      }
+
       await this.billingService.processSuccessfulPayment(req.body);
       return res.status(HttpStatus.OK).send();
     } catch (error) {
-      console.error('Webhook error:', error);
+      this.logger.error('Webhook processing error:', error);
       return res.status(HttpStatus.BAD_REQUEST).send();
     }
   }

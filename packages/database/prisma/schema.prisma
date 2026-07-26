@@ -141,6 +141,8 @@ model Subscription {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([clientId])
 }
 
 model Plan {
@@ -182,6 +184,8 @@ model Transaction {
   updatedAt DateTime @updatedAt
 
   invoice Invoice?
+
+  @@index([clientId])
 }
 
 model Invoice {
@@ -202,6 +206,8 @@ model Invoice {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 // -----------------------------------------------------------------------------
@@ -243,6 +249,8 @@ model WabaAccount {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 enum ContactStatus {
@@ -454,6 +462,8 @@ model Automation {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 // -----------------------------------------------------------------------------

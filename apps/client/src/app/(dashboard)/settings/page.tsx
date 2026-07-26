@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from "@algo-matrix/ui";
 import { Save, UploadCloud, Building2, Globe } from "lucide-react";
-import axios from 'axios';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const [isUploading, setIsUploading] = useState(false);
@@ -17,30 +18,30 @@ export default function SettingsPage() {
 
     try {
       // 1. Get presigned URL from our NestJS backend
-      const { data: response } = await axios.post('https://api.algomatrixai.com/storage/presigned-url', {
+      const { data: response } = await api.post('/storage/presigned-url', {
         fileName: file.name,
         mimeType: file.type,
-        clientId: 'mock_client_123', // In prod, get from Auth context
       });
 
-      const { url, key } = response.data;
+      const { url, key } = response.data || response;
 
       // 2. Upload file directly to S3/Cloudflare R2
+      const axios = (await import('axios')).default;
       await axios.put(url, file, {
         headers: {
           'Content-Type': file.type,
         },
       });
 
-      // 3. Save the new avatar URL to local state (In prod, save to Tenant DB)
-      // For Cloudflare R2 / S3 public buckets, the URL is typically the endpoint + key
-      const publicUrl = `https://your-account-id.r2.cloudflarestorage.com/waba-media-bucket/${key}`;
+      // 3. Save the new avatar URL
+      const storageBaseUrl = process.env.NEXT_PUBLIC_STORAGE_URL || '';
+      const publicUrl = storageBaseUrl ? `${storageBaseUrl}/${key}` : key;
       setAvatarUrl(publicUrl);
-      alert('Avatar uploaded successfully!');
+      toast.success('Avatar uploaded successfully!');
       
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload avatar. Please check your storage configuration.');
+      toast.error('Failed to upload avatar. Please check your storage configuration.');
     } finally {
       setIsUploading(false);
     }

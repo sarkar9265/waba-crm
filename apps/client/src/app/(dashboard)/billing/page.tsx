@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Button, Card, CardHeader, CardTitle, CardContent } from "@algo-matrix/ui";
 import { CheckCircle2, Zap, Shield, Rocket, Download, History, CreditCard } from "lucide-react";
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/store/useAuthStore';
+import { toast } from 'sonner';
 
 declare global {
   interface Window {
@@ -59,7 +61,6 @@ export default function BillingPage() {
   const [isRazorpayLoaded, setIsRazorpayLoaded] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'plans' | 'history'>('plans');
-  const [gateway, setGateway] = useState<'RAZORPAY'|'PAYTM'>('RAZORPAY');
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [couponError, setCouponError] = useState('');
@@ -67,6 +68,8 @@ export default function BillingPage() {
   const [subscription, setSubscription] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  const user = useAuthStore((state) => state.user);
 
   const fetchBillingData = async () => {
     try {
@@ -99,7 +102,7 @@ export default function BillingPage() {
 
   const handleCheckout = async (plan: typeof PLANS[0]) => {
     if (!isRazorpayLoaded) {
-      alert("Razorpay SDK failed to load. Are you online?");
+      toast.error("Razorpay SDK failed to load. Are you online?");
       return;
     }
     
@@ -109,33 +112,13 @@ export default function BillingPage() {
       // 1. Create order on backend via authenticated API
       const { data: order } = await api.post('/billing/create-order', {
         planName: plan.name,
-        amount: plan.price,
-        gateway: gateway,
+        gateway: 'RAZORPAY',
         couponCode: appliedCoupon ? appliedCoupon.code : undefined
       });
 
-      if (gateway === 'PAYTM') {
-        // Mock Paytm flow
-        alert(`Redirecting to Paytm with Order ID: ${order.id}. Total: ₹${order.total}`);
-        // Simulate success webhook
-        await api.post('/billing/webhook', {
-          paytm_order_id: order.id,
-          paytm_transaction_id: `PTM_TXN_${Date.now()}`,
-          clientId: subscription?.clientId || 'unknown',
-          planName: plan.name,
-          amount: order.total,
-          subtotal: order.subtotal,
-          tax: order.tax,
-          discount: appliedCoupon ? (plan.price - order.subtotal) : 0,
-        });
-        alert(`Successfully subscribed to ${plan.name} plan via Paytm!`);
-        fetchBillingData();
-        return;
-      }
-
       // 2. Initialize Razorpay Checkout
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_mocked", // Use appropriate environment variable
+        key: order.keyId, // Use the key returned from backend
         amount: order.amount,
         currency: order.currency,
         name: "Algo Matrix",
@@ -143,42 +126,42 @@ export default function BillingPage() {
         order_id: order.id,
         handler: async function (response: any) {
           try {
-            // Post to webhook manually if needed, or rely on Razorpay webhook
-            await api.post('/billing/webhook', {
-              ...response,
-              clientId: subscription?.clientId,
-              planName: plan.name,
-              amount: order.total,
-              subtotal: order.subtotal,
-              tax: order.tax,
-              discount: appliedCoupon ? (plan.price - order.subtotal) : 0,
+            // Verify payment server-side via authenticated endpoint
+            await api.post('/billing/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
             });
-            alert(`Successfully subscribed to ${plan.name} plan!`);
-            fetchBillingData(); // refresh
+            toast.success(`Successfully subscribed to ${plan.name} plan!`);
+            fetchBillingData();
           } catch (e) {
-            alert('Payment verification failed.');
+            toast.error('Payment verification failed. Contact support if amount was deducted.');
           }
         },
         prefill: {
-          name: "Client Admin",
-          email: "admin@example.com",
-          contact: "9999999999"
+          name: user?.name || '',
+          email: user?.email || '',
         },
         theme: {
-          color: "#059669"
+          color: "#13b77a"
+        },
+        modal: {
+          ondismiss: function () {
+            setLoadingPlan(null);
+          }
         }
       };
 
       const rzp1 = new window.Razorpay(options);
       rzp1.on('payment.failed', function (response: any) {
         console.error(response.error);
-        alert("Payment failed. Please try again.");
+        toast.error(`Payment failed: ${response.error?.description || 'Please try again.'}`);  
       });
       rzp1.open();
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Checkout error:", error);
-      alert("Failed to initiate checkout");
+      toast.error(error.response?.data?.message || "Failed to initiate checkout");
     } finally {
       setLoadingPlan(null);
     }
@@ -195,7 +178,7 @@ export default function BillingPage() {
       link.click();
       link.parentNode?.removeChild(link);
     } catch (error) {
-      alert("Failed to download invoice");
+      toast.error("Failed to download invoice");
     }
   };
 
@@ -254,19 +237,6 @@ export default function BillingPage() {
       {activeTab === 'plans' && (
         <>
           <div className="bg-[var(--card)] p-4 rounded-lg border border-[var(--border)] mb-6 flex flex-col md:flex-row gap-8 items-start md:items-center">
-            <div>
-              <h3 className="font-semibold mb-2">Payment Gateway</h3>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="gateway" checked={gateway === 'RAZORPAY'} onChange={() => setGateway('RAZORPAY')} />
-                  Razorpay
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="gateway" checked={gateway === 'PAYTM'} onChange={() => setGateway('PAYTM')} />
-                  Paytm
-                </label>
-              </div>
-            </div>
             <div className="flex-1">
               <h3 className="font-semibold mb-2">Discount Coupon</h3>
               <div className="flex gap-2">
@@ -284,19 +254,19 @@ export default function BillingPage() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 pt-4">
+          <div className="grid md:grid-cols-3 gap-8 pt-6">
           {PLANS.map((plan) => (
             <Card 
               key={plan.name} 
               className={`relative flex flex-col ${
                 plan.highlight 
-                  ? 'border-[var(--primary)] shadow-lg shadow-[var(--primary)]/10 scale-105 z-10 bg-[var(--background)]' 
+                  ? 'border-[var(--primary)] shadow-lg shadow-[var(--primary)]/10 ring-1 ring-[var(--primary)]/20 bg-[var(--background)]' 
                   : 'border-[var(--border)]'
               }`}
             >
               {plan.highlight && (
-                <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-4">
-                  <span className="bg-[var(--primary)] text-white text-xs font-bold uppercase tracking-wider py-1 px-3 rounded-full">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <span className="bg-[var(--primary)] text-white text-xs font-bold uppercase tracking-wider py-1 px-3 rounded-full whitespace-nowrap">
                     Most Popular
                   </span>
                 </div>
@@ -346,7 +316,7 @@ export default function BillingPage() {
                     onClick={() => handleCheckout(plan)}
                     disabled={loadingPlan === plan.name}
                   >
-                    {loadingPlan === plan.name ? 'Processing...' : `Subscribe via ${gateway === 'RAZORPAY' ? 'Razorpay' : 'Paytm'}`}
+                    {loadingPlan === plan.name ? 'Processing...' : 'Subscribe Now'}
                   </Button>
                 </div>
               </CardContent>

@@ -9,6 +9,11 @@ import axios from 'axios';
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
   private razorpay: any;
+  private readonly planPrices: Record<string, number> = {
+    Starter: 999,
+    Pro: 2999,
+    Enterprise: 9999,
+  };
 
   constructor(private prisma: PrismaService) {
     if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
@@ -44,19 +49,17 @@ export class BillingService {
     });
   }
 
-  async createOrder(clientId: string, planName: string, amount: number, gateway: string = 'RAZORPAY', couponCode?: string) {
-    let finalAmount = amount;
-    let appliedCoupon: any = null;
-
-    if (couponCode) {
-      const coupon = await this.prisma.coupon.findUnique({ where: { code: couponCode } });
-      if (coupon && coupon.isActive && (!coupon.expiresAt || coupon.expiresAt > new Date())) {
-        finalAmount = amount - (amount * (coupon.discountPercent / 100));
-        appliedCoupon = coupon;
-      } else {
-        throw new HttpException('Invalid or expired coupon', HttpStatus.BAD_REQUEST);
-      }
+  async createOrder(clientId: string, planName: string, gateway: string = 'RAZORPAY', couponCode?: string) {
+    const amount = this.planPrices[planName];
+    if (!amount) {
+      throw new HttpException('Unknown subscription plan', HttpStatus.BAD_REQUEST);
     }
+
+    if (gateway !== 'RAZORPAY') {
+      throw new HttpException('This payment gateway is not configured yet', HttpStatus.BAD_REQUEST);
+    }
+
+    const { finalAmount, appliedCoupon } = await this.calculatePrice(amount, couponCode);
 
     // Always apply 18% GST on the final discounted amount
     const gstAmount = finalAmount * 0.18;
@@ -90,27 +93,90 @@ export class BillingService {
           amount: order.amount, // in paise
           subtotal: finalAmount,
           tax: gstAmount,
-          total: totalPayable
+          total: totalPayable,
+          keyId: process.env.RAZORPAY_KEY_ID,
         };
       } catch (error) {
         this.logger.error('Failed to create Razorpay order', error);
         throw new HttpException('Failed to initiate payment', HttpStatus.INTERNAL_SERVER_ERROR);
       }
-    } else if (gateway === 'PAYTM') {
-      // Mock Paytm Order Creation
-      const orderId = `PAYTM_${clientId}_${Date.now()}`;
-      return {
-        id: orderId,
-        currency: "INR",
-        amount: Math.round(totalPayable), // Paytm usually takes exact amounts or strings
-        subtotal: finalAmount,
-        tax: gstAmount,
-        total: totalPayable,
-        provider: 'PAYTM'
-      };
-    } else {
-      throw new HttpException('Unsupported payment gateway', HttpStatus.BAD_REQUEST);
     }
+
+    return null;
+  }
+
+  async verifyPayment(clientId: string, payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) {
+    if (!this.razorpay) {
+      throw new HttpException('Payment gateway not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = payload;
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      throw new HttpException('Incomplete payment verification payload', HttpStatus.BAD_REQUEST);
+    }
+
+    if (!this.verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)) {
+      throw new HttpException('Invalid payment signature', HttpStatus.BAD_REQUEST);
+    }
+
+    const existingTx = await this.prisma.transaction.findUnique({
+      where: { razorpayPaymentId: razorpay_payment_id },
+    });
+    if (existingTx) return { status: 'already_processed' };
+
+    let order: any;
+    try {
+      order = await this.razorpay.orders.fetch(razorpay_order_id);
+    } catch (error) {
+      this.logger.error('Could not fetch Razorpay order during verification', error);
+      throw new HttpException('Could not verify payment order', HttpStatus.BAD_REQUEST);
+    }
+
+    const notes = order?.notes || {};
+    if (notes.clientId !== clientId) {
+      throw new HttpException('Payment order does not belong to this workspace', HttpStatus.FORBIDDEN);
+    }
+
+    const planName = notes.planName;
+    const amount = Number(order.amount) / 100;
+    if (!planName || !this.planPrices[planName] || !amount) {
+      throw new HttpException('Payment order is missing subscription details', HttpStatus.BAD_REQUEST);
+    }
+
+    await this.completePaymentTransaction({
+      clientId,
+      planName,
+      amount,
+      gateway: 'RAZORPAY',
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+      subtotal: Number(notes.subtotal) || amount,
+      tax: Number(notes.tax) || 0,
+      discount: Number(notes.discount) || 0,
+    });
+
+    return { status: 'success', planName };
+  }
+
+  private async calculatePrice(amount: number, couponCode?: string) {
+    let finalAmount = amount;
+    let appliedCoupon: any = null;
+
+    if (couponCode) {
+      const coupon = await this.prisma.coupon.findUnique({ where: { code: couponCode.trim().toUpperCase() } });
+      if (!coupon || !coupon.isActive || (coupon.expiresAt && coupon.expiresAt <= new Date())) {
+        throw new HttpException('Invalid or expired coupon', HttpStatus.BAD_REQUEST);
+      }
+      finalAmount = amount - (amount * (coupon.discountPercent / 100));
+      appliedCoupon = coupon;
+    }
+
+    return { finalAmount, appliedCoupon };
   }
 
   verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {

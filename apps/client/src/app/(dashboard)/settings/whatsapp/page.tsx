@@ -30,8 +30,39 @@ export default function WhatsAppSettingsPage() {
   const [webhookHealth, setWebhookHealth] = useState<WebhookHealth | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFbSdkLoaded, setIsFbSdkLoaded] = useState(false);
   
   const { token } = useAuthStore();
+  const metaAppId = process.env.NEXT_PUBLIC_META_APP_ID;
+  const metaConfigId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+
+  // Load Facebook SDK
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Define the callback for FB SDK
+    (window as any).fbAsyncInit = function () {
+      (window as any).FB.init({
+        appId: metaAppId,
+        cookie: true,
+        xfbml: true,
+        version: 'v20.0',
+      });
+      setIsFbSdkLoaded(true);
+    };
+
+    // Load the SDK script if not already present
+    if (!document.getElementById('facebook-jssdk')) {
+      const script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    } else if ((window as any).FB) {
+      setIsFbSdkLoaded(true);
+    }
+  }, [metaAppId]);
 
   useEffect(() => {
     if (token) {
@@ -56,23 +87,55 @@ export default function WhatsAppSettingsPage() {
   };
 
   const handleMetaLogin = async () => {
+    const FB = (window as any).FB;
+    
+    if (!FB || !isFbSdkLoaded) {
+      toast.error("Facebook SDK is not loaded. Please refresh and try again.");
+      return;
+    }
+
+    if (!metaAppId) {
+      toast.error("Meta App ID is not configured. Please contact support.");
+      return;
+    }
+    
     setIsConnecting(true);
     
-    // In a production scenario, we would use the FB.login() SDK here:
-    // FB.login(callback, { scopes: 'whatsapp_business_management,whatsapp_business_messaging' })
-    // For this demonstration, we'll mock the flow by sending a fake OAuth code to our backend.
-    
-    setTimeout(async () => {
-      try {
-        await api.post("/webhook/whatsapp/oauth", { code: "mock_oauth_code_" + Date.now() });
-        toast.success("WhatsApp account successfully connected!");
-        fetchData();
-      } catch (error) {
-        toast.error("Failed to connect account.");
-      } finally {
-        setIsConnecting(false);
-      }
-    }, 1500);
+    try {
+      // Use Facebook Embedded Signup / Login dialog
+      FB.login(
+        async (response: any) => {
+          if (response.authResponse) {
+            const accessToken = response.authResponse.accessToken;
+            
+            try {
+              await api.post("/webhook/whatsapp/oauth", { 
+                code: accessToken,
+                type: 'access_token', // Signal that this is a direct token, not an OAuth code
+              });
+              toast.success("WhatsApp account successfully connected!");
+              fetchData();
+            } catch (error: any) {
+              toast.error(error.response?.data?.message || "Failed to connect account.");
+            }
+          } else {
+            toast.error("Facebook login was cancelled or failed.");
+          }
+          setIsConnecting(false);
+        },
+        {
+          // Required scopes for WhatsApp Business API
+          scope: 'whatsapp_business_management,whatsapp_business_messaging,business_management',
+          extras: {
+            feature: 'whatsapp_embedded_signup',
+            ...(metaConfigId ? { setup: { solutionID: metaConfigId } } : {}),
+          },
+        }
+      );
+    } catch (error) {
+      toast.error("Failed to open Facebook login dialog.");
+      setIsConnecting(false);
+    }
   };
 
   const handleDisconnect = async (accountId: string) => {
