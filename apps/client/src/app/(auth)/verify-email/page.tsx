@@ -21,7 +21,7 @@ function VerifyEmailContent() {
 
     const verifyEmail = async () => {
       try {
-        const res = await fetch(`https://api.algomatrixai.com/api/auth/verify-email?token=${token}`, {
+        const res = await fetch(`https://api.algomatrixai.com/auth/verify-email?token=${token}`, {
           method: "GET",
         });
 

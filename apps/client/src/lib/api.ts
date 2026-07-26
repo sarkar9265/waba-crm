@@ -2,7 +2,7 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://api.algomatrixai.com/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://api.algomatrixai.com',
   headers: {
     'Content-Type': 'application/json',
   },

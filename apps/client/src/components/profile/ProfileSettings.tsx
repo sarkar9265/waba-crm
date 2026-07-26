@@ -33,7 +33,7 @@ export function ProfileSettings() {
     try {
       // Simulate API call for S3 upload via backend
       /*
-      await fetch("https://api.algomatrixai.com/api/users/avatar", {
+      await fetch("https://api.algomatrixai.com/users/avatar", {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formData
