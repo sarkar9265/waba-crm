@@ -19,7 +19,8 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("https://api.algomatrixai.com/auth/login", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+      const res = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,12 +32,13 @@ export default function AdminLoginPage() {
 
       const data = await res.json();
       
-      // In a real implementation, we would check if data.user.role === 'Super Admin'
-      // If not, throw error.
+      // Security Check: Only allow Super Admins to log into the admin portal
+      if (data.user.role !== 'SUPER_ADMIN' && data.user.role !== 'ADMIN_STAFF') {
+        throw new Error("Access denied. You do not have admin privileges.");
+      }
       
-      // We would use an admin-specific auth store here or standard cookies.
-      // Since it's a separate app, we use document.cookie for simplicity in this demo.
-      document.cookie = `token=${data.access_token}; path=/; max-age=86400`;
+      // Use document.cookie for simplicity in this demo.
+      document.cookie = `waba_token=${data.access_token}; path=/; max-age=86400`;
       
       router.push("/");
     } catch (err: any) {

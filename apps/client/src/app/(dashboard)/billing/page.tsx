@@ -277,7 +277,7 @@ export default function BillingPage() {
                   {plan.icon}
                 </div>
                 <CardTitle className="text-2xl font-bold">{plan.name}</CardTitle>
-                <p className="text-sm text-[var(--muted-foreground)] mt-2 h-10">{plan.description}</p>
+                <p className="text-sm text-[var(--muted-foreground)] mt-2 min-h-[3.5rem] flex items-start justify-center">{plan.description}</p>
               </CardHeader>
               
               <CardContent className="flex-1 flex flex-col pt-4">
