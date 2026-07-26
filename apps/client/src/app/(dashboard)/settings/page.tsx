@@ -17,7 +17,7 @@ export default function SettingsPage() {
 
     try {
       // 1. Get presigned URL from our NestJS backend
-      const { data: response } = await axios.post('http://localhost:3001/storage/presigned-url', {
+      const { data: response } = await axios.post('https://api.algomatrixai.com/storage/presigned-url', {
         fileName: file.name,
         mimeType: file.type,
         clientId: 'mock_client_123', // In prod, get from Auth context

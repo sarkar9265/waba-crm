@@ -93,7 +93,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (socket) return;
 
     const token = Cookies.get('waba_token');
-    const newSocket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000', {
+    const newSocket = io(process.env.NEXT_PUBLIC_API_URL || 'https://api.algomatrixai.com', {
       auth: { token },
       transports: ['websocket'],
       reconnection: true,

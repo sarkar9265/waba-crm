@@ -27,7 +27,7 @@ export default function TwoFactorAuthPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3001/api/auth/2fa/verify", {
+      const res = await fetch("https://api.algomatrixai.com/api/auth/2fa/verify", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
