@@ -17,21 +17,22 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: Cookies.get('token') || null,
+  token: Cookies.get('waba_token') || null,
   setUser: (user, token, rememberMe = false) => {
     if (token) {
       if (rememberMe) {
-        Cookies.set('token', token, { expires: 30 }); // 30 days
+        Cookies.set('waba_token', token, { expires: 30 }); // 30 days
       } else {
-        Cookies.set('token', token); // Session cookie
+        Cookies.set('waba_token', token); // Session cookie
       }
     } else {
-      Cookies.remove('token');
+      Cookies.remove('waba_token');
     }
     set({ user, token });
   },
   logout: () => {
-    Cookies.remove('token');
+    Cookies.remove('waba_token');
+    Cookies.remove('waba_user');
     set({ user: null, token: null });
     window.location.href = '/login';
   },
