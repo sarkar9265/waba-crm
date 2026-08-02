@@ -594,4 +594,52 @@ export class WhatsappService {
     }
     throw new Error('Media URL not found');
   }
+
+  async getBusinessProfile(accountId: string, clientId: string) {
+    const account = await this.prisma.wabaAccount.findFirst({
+      where: { id: accountId, clientId }
+    });
+    if (!account) throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
+
+    const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+    const token = client?.metaToken || process.env.META_ACCESS_TOKEN;
+    if (!token) throw new HttpException('No Meta Access Token available', HttpStatus.BAD_REQUEST);
+
+    const url = `https://graph.facebook.com/${this.graphApiVersion}/${account.phoneNumberId}/whatsapp_business_profile`;
+    const response = await firstValueFrom(
+      this.httpService.get(url, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        params: { fields: 'about,address,description,email,profile_picture_url,websites,vertical' }
+      })
+    );
+    return response.data?.data?.[0] || {};
+  }
+
+  async updateBusinessProfile(accountId: string, clientId: string, data: any) {
+    const account = await this.prisma.wabaAccount.findFirst({
+      where: { id: accountId, clientId }
+    });
+    if (!account) throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
+
+    const client = await this.prisma.client.findUnique({ where: { id: clientId } });
+    const token = client?.metaToken || process.env.META_ACCESS_TOKEN;
+    if (!token) throw new HttpException('No Meta Access Token available', HttpStatus.BAD_REQUEST);
+
+    const url = `https://graph.facebook.com/${this.graphApiVersion}/${account.phoneNumberId}/whatsapp_business_profile`;
+    
+    const payload = {
+      messaging_product: "whatsapp",
+      ...data
+    };
+    
+    const response = await firstValueFrom(
+      this.httpService.post(url, payload, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+    );
+    return response.data;
+  }
 }

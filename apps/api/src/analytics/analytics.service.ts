@@ -154,11 +154,9 @@ export class AnalyticsService {
         }
       });
 
-      // Calculate mock response time (since we don't have explicit timestamps stored for this logic)
-      const responseTime = Math.floor(Math.random() * 15) + 1; // 1 to 15 mins
-      
-      // Calculate mock ROI based on a simple heuristic for demonstration
-      const campaignRoi = Math.floor(Math.random() * 50) + 10; // 10% to 60%
+      // Default response time and ROI since we don't have explicit timestamps stored for this logic
+      const responseTime = 0;
+      const campaignRoi = 0;
 
       chartData.push({
         name: days[d.getDay()],
@@ -209,8 +207,8 @@ export class AnalyticsService {
     });
 
     const leaderboard = agents.map(agent => {
-      // Mocking CSAT between 85% and 100% since it's not in the DB
-      const csat = Math.floor(Math.random() * (100 - 85 + 1)) + 85; 
+      // Default CSAT since it's not in the DB
+      const csat = 0;
       return {
         name: agent.name || 'Unknown Agent',
         solved: agent.assignedChats.length,

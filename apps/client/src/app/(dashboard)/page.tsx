@@ -43,9 +43,17 @@ export default function DashboardHome() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">Welcome back!</h1>
-        <p className="text-[var(--muted-foreground)] mt-1">Here is a quick overview of your WhatsApp Business.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">Welcome back!</h1>
+          <p className="text-[var(--muted-foreground)] mt-1">Here is a quick overview of your WhatsApp Business.</p>
+        </div>
+        <Button asChild className="bg-[#25D366] hover:bg-[#25D366]/90 text-white font-medium shrink-0 shadow-sm border border-[#25D366]/20">
+          <a href="https://business.facebook.com/messaging/whatsapp/onboard/?app_id=2081734396063574&config_id=3650462835091874&extras=%7B%22version%22%3A%22v4%22%2C%22sessionInfoVersion%22%3A%223%22%2C%22featureType%22%3A%22whatsapp_business_app_onboarding%22%7D&redirect_uri=https%3A%2F%2Fclient.algomatrixai.com%2Fauth%2Fmeta%2Fcallback">
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Connect WhatsApp API
+          </a>
+        </Button>
       </div>
 
       <motion.div 

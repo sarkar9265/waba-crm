@@ -23,20 +23,38 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      // 1. Create user in Firebase
+      const { createUserWithEmailAndPassword, updateProfile } = await import("firebase/auth");
+      const { auth } = await import("@algo-matrix/shared");
+      
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Update the user's name in Firebase profile
+      await updateProfile(userCredential.user, { displayName: name });
+      
+      // 2. Get the Firebase ID Token
+      const token = await userCredential.user.getIdToken();
+
+      // 3. Register/sync user with our backend
       const res = await fetch("https://api.algomatrixai.com/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ email, name }),
       });
 
       if (!res.ok) {
+        // If our backend fails to register them, we might want to delete the firebase user, but for now we just throw.
         throw new Error("Failed to register. Email might be in use.");
       }
 
       const data = await res.json();
-      setUser(data.user, data.access_token);
+      setUser(data.user, data.access_token || token);
       router.push("/");
     } catch (err: any) {
+      console.error(err);
       setError(err.message || "Failed to register");
     } finally {
       setLoading(false);

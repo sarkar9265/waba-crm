@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from "@algo-matrix/ui";
 import { MessageCircle, CheckCircle2, AlertCircle, RefreshCw, Trash2, Loader2, Activity } from "lucide-react";
 import { api } from "@/lib/api";
@@ -262,16 +263,23 @@ export default function WhatsAppSettingsPage() {
                     </CardTitle>
                     <p className="text-sm text-[var(--muted-foreground)] mt-1">WABA ID: {account.wabaId}</p>
                   </div>
-                  <Button 
-                    variant="destructive" 
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => handleDisconnect(account.id)}
-                    disabled={isDisconnecting === account.id}
-                  >
-                    {isDisconnecting === account.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Disconnect
-                  </Button>
+                  <div className="flex gap-2">
+                    <Link href={`/settings/whatsapp/${account.id}/profile`}>
+                      <Button variant="outline" size="sm">
+                        Manage Profile
+                      </Button>
+                    </Link>
+                    <Button 
+                      variant="destructive" 
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => handleDisconnect(account.id)}
+                      disabled={isDisconnecting === account.id}
+                    >
+                      {isDisconnecting === account.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Disconnect
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

@@ -32,3 +32,5 @@ export interface BillingOrderPayload {
   planName: string;
   amount: number;
 }
+
+export * from "./src/lib/firebase";

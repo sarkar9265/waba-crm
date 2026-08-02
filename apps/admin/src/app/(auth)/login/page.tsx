@@ -19,14 +19,28 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
+      // 1. Sign in with Firebase
+      const { signInWithEmailAndPassword } = await import("firebase/auth");
+      const { auth } = await import("@algo-matrix/shared");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // 2. Get the Firebase ID Token
+      const token = await userCredential.user.getIdToken();
+
+      // 3. Authenticate with our backend using the Firebase Token
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.algomatrixai.com";
       const res = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ email }), // Send email for matching or sync
       });
 
       if (!res.ok) {
+        // If our backend rejects them (e.g. they don't exist in our DB)
+        await auth.signOut();
         throw new Error("Invalid credentials or unauthorized");
       }
 
@@ -34,14 +48,16 @@ export default function AdminLoginPage() {
       
       // Security Check: Only allow Super Admins to log into the admin portal
       if (data.user.role !== 'SUPER_ADMIN' && data.user.role !== 'ADMIN_STAFF') {
+        await auth.signOut();
         throw new Error("Access denied. You do not have admin privileges.");
       }
       
-      // Use document.cookie for simplicity in this demo.
-      document.cookie = `waba_token=${data.access_token}; path=/; max-age=86400`;
+      // Use document.cookie for simplicity in this demo to store the custom token or firebase token
+      document.cookie = `waba_token=${data.access_token || token}; path=/; max-age=86400`;
       
       router.push("/");
     } catch (err: any) {
+      console.error(err);
       setError(err.message || "Failed to login");
     } finally {
       setLoading(false);

@@ -174,6 +174,26 @@ export class WhatsappController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('accounts/:id/profile')
+  async getBusinessProfile(@Param('id') id: string, @Req() req: any) {
+    const clientId = req.user?.clientId;
+    return this.whatsappService.getBusinessProfile(id, clientId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('accounts/:id/profile')
+  async updateBusinessProfile(@Param('id') id: string, @Body() data: any, @Req() req: any) {
+    const clientId = req.user?.clientId;
+    try {
+      const result = await this.whatsappService.updateBusinessProfile(id, clientId, data);
+      return { success: true, profile: result };
+    } catch (error: any) {
+      this.logger.error(`Failed to update business profile: ${error.message}`);
+      return { success: false, error: 'Failed to update WhatsApp Business profile' };
+    }
+  }
+
   /**
    * Endpoint to receive incoming WhatsApp messages and events
    */

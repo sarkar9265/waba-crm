@@ -8,8 +8,21 @@ export const api = axios.create({
   },
 });
 
-api.interceptors.request.use((config) => {
-  const token = Cookies.get('waba_token');
+api.interceptors.request.use(async (config) => {
+  let token = Cookies.get('waba_token');
+  
+  try {
+    const { auth } = await import('@algo-matrix/shared');
+    const user = auth.currentUser;
+    if (user) {
+      token = await user.getIdToken();
+      // Keep cookie in sync
+      Cookies.set('waba_token', token, { expires: 1 });
+    }
+  } catch (e) {
+    // Ignore error if firebase is not initialized or not available
+  }
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

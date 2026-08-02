@@ -20,6 +20,20 @@ export class UsersService {
     });
   }
 
+  async update(id: string, data: any) {
+    return this.prisma.user.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async update(id: string, data: any) {
+    return this.prisma.user.update({
+      where: { id },
+      data,
+    });
+  }
+
   async findAllByTenant(clientId: string) {
     return this.prisma.user.findMany({
       where: { clientId },
@@ -43,19 +57,31 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(data.password || 'Password123!', 10);
 
+    let clientId = data.clientId;
+    let role = data.role || Role.AGENT;
+
+    if (!clientId && !requesterId) {
+      const newClient = await this.prisma.client.create({
+        data: { name: `${data.name || 'My'}'s Workspace` }
+      });
+      clientId = newClient.id;
+      role = Role.CLIENT_OWNER;
+    }
+
     const user = await this.prisma.user.create({
       data: {
         email: data.email,
         name: data.name,
         password: hashedPassword,
-        role: data.role || Role.AGENT,
-        clientId: data.clientId || null,
+        role,
+        clientId,
       },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        clientId: true,
       }
     });
 
@@ -92,6 +118,7 @@ export class UsersService {
         name: true,
         email: true,
         role: true,
+        clientId: true,
       }
     });
 

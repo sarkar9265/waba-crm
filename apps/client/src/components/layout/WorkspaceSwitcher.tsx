@@ -19,6 +19,7 @@ export function WorkspaceSwitcher() {
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(workspaces[0]);
 
   return (
+    <div className="mb-6">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="w-full justify-between px-2 py-1.5 h-12 hover:bg-[var(--accent)] text-left">
@@ -59,5 +60,6 @@ export function WorkspaceSwitcher() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    </div>
   );
 }

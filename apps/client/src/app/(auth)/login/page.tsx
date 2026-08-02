@@ -23,20 +23,34 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // 1. Sign in with Firebase
+      const { signInWithEmailAndPassword } = await import("firebase/auth");
+      const { auth } = await import("@algo-matrix/shared");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // 2. Get the Firebase ID Token
+      const token = await userCredential.user.getIdToken();
+
+      // 3. Authenticate with our backend
       const res = await fetch("https://api.algomatrixai.com/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ email }),
       });
 
       if (!res.ok) {
+        await auth.signOut();
         throw new Error("Invalid credentials");
       }
 
       const data = await res.json();
-      setUser(data.user, data.access_token, rememberMe);
+      setUser(data.user, data.access_token || token, rememberMe);
       router.push("/");
     } catch (err: any) {
+      console.error(err);
       setError(err.message || "Failed to login");
     } finally {
       setLoading(false);

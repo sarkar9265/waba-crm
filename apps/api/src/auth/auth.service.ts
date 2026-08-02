@@ -39,11 +39,10 @@ export class AuthService {
       throw new UnauthorizedException('Email already in use');
     }
     
-    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.usersService.create({
       email,
       name,
-      password: hashedPassword,
+      password,
     });
     
     return this.login(user);
