@@ -19,6 +19,10 @@ export class JwtAuthGuard implements CanActivate {
     try {
       const decodedToken = await firebaseAuth.verifyIdToken(token);
       
+      if (!decodedToken.email) {
+        throw new UnauthorizedException('Token does not contain an email address');
+      }
+
       // Find the user in our database
       const user = await this.usersService.findByEmail(decodedToken.email);
       

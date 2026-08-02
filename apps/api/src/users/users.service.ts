@@ -27,12 +27,7 @@ export class UsersService {
     });
   }
 
-  async update(id: string, data: any) {
-    return this.prisma.user.update({
-      where: { id },
-      data,
-    });
-  }
+
 
   async findAllByTenant(clientId: string) {
     return this.prisma.user.findMany({
