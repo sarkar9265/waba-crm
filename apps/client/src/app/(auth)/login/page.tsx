@@ -32,7 +32,8 @@ export default function LoginPage() {
       const token = await userCredential.user.getIdToken();
 
       // 3. Authenticate with our backend
-      const res = await fetch("https://api.algomatrixai.com/auth/login", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.algomatrixai.com";
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -72,7 +73,8 @@ export default function LoginPage() {
       
       const token = await userCredential.user.getIdToken();
 
-      const res = await fetch("https://api.algomatrixai.com/auth/login", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.algomatrixai.com";
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
