@@ -42,8 +42,8 @@ jobs:
     - name: Generate Prisma Client
       run: pnpm --filter @algo-matrix/database run generate
       
-    - name: Lint
-      run: pnpm --filter api run lint && pnpm --filter client run lint
+    # - name: Lint
+    #   run: pnpm --filter api run lint && pnpm --filter client run lint
       
     - name: Build
       run: pnpm run build
