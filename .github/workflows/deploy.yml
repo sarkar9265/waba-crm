@@ -27,6 +27,15 @@ jobs:
         key: ${{ secrets.SERVER_SSH_KEY }}
         script_stop: true
         script: |
+          # Load environment for non-interactive SSH
+          source ~/.bashrc || true
+          source ~/.profile || true
+          if [ -d "$HOME/.nvm" ]; then
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          fi
+          export PATH=$PATH:~/.local/share/pnpm
+          
           cd /opt/algomatrix/waba-crm
           
           # Pull latest code
@@ -42,7 +51,7 @@ jobs:
           pnpm run build
           
           # Restart via PM2
-          pm2 restart all --update-env
+          pm2 restart all
           
           # Save PM2 state
           pm2 save
