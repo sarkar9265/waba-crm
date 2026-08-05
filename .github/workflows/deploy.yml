@@ -1,0 +1,48 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    
+    steps:
+    - name: Tailscale
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+        
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: root
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script_stop: true
+        script: |
+          cd /opt/algomatrix/waba-crm
+          
+          # Pull latest code
+          git pull origin main
+          
+          # Install dependencies
+          pnpm install --frozen-lockfile
+          
+          # Generate Prisma Client
+          pnpm --filter @algo-matrix/database run generate
+          
+          # Build all apps
+          pnpm run build
+          
+          # Restart via PM2
+          pm2 restart all --update-env
+          
+          # Save PM2 state
+          pm2 save
