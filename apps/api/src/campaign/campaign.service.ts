@@ -83,7 +83,7 @@ export class CampaignService {
     this.logger.log(`Enqueuing campaign ${id} for audience ${JSON.stringify(campaign.audience)}`);
     
     const audience = campaign.audience as any;
-    let contacts = [];
+    let contacts: any[] = [];
 
     if (audience?.type === 'ALL') {
       contacts = await this.prisma.contact.findMany({ where: { clientId, status: 'OPTED_IN' } });
