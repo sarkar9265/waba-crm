@@ -202,7 +202,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           <h3 className="font-semibold text-sm uppercase text-muted-foreground">Actions</h3>
           
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'reply')}
           >
@@ -211,7 +211,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'ai_reply')}
           >
@@ -220,7 +220,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'delay')}
           >
@@ -229,7 +229,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'assign_agent')}
           >
@@ -238,7 +238,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'condition')}
           >
@@ -247,7 +247,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'api_request')}
           >
@@ -256,7 +256,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'webhook')}
           >
@@ -265,7 +265,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           </div>
 
           <div 
-            className="flex items-center p-3 bg-card border rounded cursor-grab hover:border-primary transition-colors"
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'end_flow')}
           >
@@ -291,11 +291,17 @@ function FlowCanvas({ automationId }: { automationId: string }) {
             onDragOver={onDragOver}
             onNodeClick={onNodeClick}
             onPaneClick={() => setSelectedNodeId(null)}
+            proOptions={{ hideAttribution: true }}
             fitView
           >
-            <Controls />
-            <MiniMap />
-            <Background gap={12} size={1} />
+            <Controls className="bg-[var(--card)] border border-[var(--border)] shadow-md rounded-md overflow-hidden [&>button]:border-b [&>button]:border-[var(--border)] [&>button]:bg-[var(--card)] [&>button]:text-[var(--foreground)] [&>button:hover]:bg-[var(--accent)]" />
+            <MiniMap 
+              style={{ backgroundColor: 'var(--card)' }}
+              maskColor="rgba(0, 0, 0, 0.4)"
+              nodeColor="var(--primary)"
+              className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-md"
+            />
+            <Background gap={16} size={1} color="var(--border)" />
           </ReactFlow>
           
           {selectedNode && (

@@ -116,13 +116,13 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
       </div>
 
       {/* Filters & Bulk Mode */}
-      <div className="flex flex-col gap-2 p-2 px-4 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 p-3 px-4 border-b border-[var(--border)]">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <Button 
               variant={filter === "All" ? "default" : "ghost"} 
               size="sm" 
-              className="rounded-full h-8"
+              className="rounded-full h-8 px-3 text-xs"
               onClick={() => setFilter("All")}
             >
               All
@@ -130,7 +130,7 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
             <Button 
               variant={filter === "Unread" ? "default" : "ghost"} 
               size="sm" 
-              className="rounded-full h-8"
+              className="rounded-full h-8 px-3 text-xs"
               onClick={() => setFilter("Unread")}
             >
               Unread
@@ -138,7 +138,7 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
             <Button 
               variant={filter === "Unassigned" ? "default" : "ghost"} 
               size="sm" 
-              className="rounded-full h-8"
+              className="rounded-full h-8 px-3 text-xs"
               onClick={() => setFilter("Unassigned")}
             >
               Unassigned
@@ -146,16 +146,16 @@ export function ConversationList({ activeId, onSelect }: ConversationListProps) 
             <Button 
               variant={filter === "Closed" ? "default" : "ghost"} 
               size="sm" 
-              className="rounded-full h-8"
+              className="rounded-full h-8 px-3 text-xs"
               onClick={() => setFilter("Closed")}
             >
               Closed
             </Button>
           </div>
           <Button 
-            variant={isBulkMode ? "secondary" : "ghost"} 
+            variant={isBulkMode ? "secondary" : "outline"} 
             size="sm" 
-            className="rounded-full h-8 text-xs"
+            className="rounded-md h-8 text-xs shrink-0"
             onClick={() => {
               setIsBulkMode(!isBulkMode);
               setSelectedIds([]);
