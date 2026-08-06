@@ -4,3 +4,4 @@ export * from './ConditionNode';
 export * from './ApiRequestNode';
 export * from './WebhookNode';
 export * from './EndNode';
+export * from './TemplateNode';

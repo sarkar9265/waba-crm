@@ -5,7 +5,7 @@ import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState,
 import '@xyflow/react/dist/style.css';
 import { api } from '@/lib/api';
 import { Button, Card } from '@algo-matrix/ui';
-import { ArrowLeft, Save, MessageSquare, Clock, Zap, Bot, UserPlus, GitBranch, Globe, Webhook, Octagon } from 'lucide-react';
+import { ArrowLeft, Save, MessageSquare, Clock, Zap, Bot, UserPlus, GitBranch, Globe, Webhook, Octagon, FileText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -15,7 +15,8 @@ import {
   ConditionNode, 
   ApiRequestNode, 
   WebhookNode, 
-  EndNode 
+  EndNode,
+  TemplateNode 
 } from '@/components/automation/nodes';
 import { NodeConfigSidebar } from '@/components/automation/NodeConfigSidebar';
 
@@ -45,6 +46,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
     apiRequestNode: ApiRequestNode,
     webhookNode: WebhookNode,
     endNode: EndNode,
+    templateNode: TemplateNode,
   }), []);
 
   useEffect(() => {
@@ -112,6 +114,10 @@ function FlowCanvas({ automationId }: { automationId: string }) {
         case 'delay':
           label = 'Wait';
           actionType = 'delay';
+          break;
+        case 'template':
+          typeNode = 'templateNode';
+          label = 'Send Template';
           break;
         case 'assign_agent':
           label = 'Assign Agent';
@@ -222,6 +228,15 @@ function FlowCanvas({ automationId }: { automationId: string }) {
           <div 
             className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
             draggable
+            onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'template')}
+          >
+            <FileText className="h-5 w-5 mr-3 text-teal-500" />
+            <span className="font-medium">Send Template</span>
+          </div>
+
+          <div 
+            className="flex items-center p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg cursor-grab hover:border-primary transition-all shadow-sm hover:shadow-md"
+            draggable
             onDragStart={(e) => e.dataTransfer.setData('application/reactflow', 'delay')}
           >
             <Clock className="h-5 w-5 mr-3 text-yellow-500" />
@@ -294,7 +309,7 @@ function FlowCanvas({ automationId }: { automationId: string }) {
             proOptions={{ hideAttribution: true }}
             fitView
           >
-            <Controls className="bg-[var(--card)] border border-[var(--border)] shadow-md rounded-md overflow-hidden [&>button]:border-b [&>button]:border-[var(--border)] [&>button]:bg-[var(--card)] [&>button]:text-[var(--foreground)] [&>button:hover]:bg-[var(--accent)]" />
+            <Controls className="bg-[var(--card)] border border-[var(--border)] shadow-md rounded-md overflow-hidden [&>button]:border-b [&>button]:border-[var(--border)] [&>button]:bg-[var(--card)] [&>button]:text-[var(--foreground)] [&>button:hover]:bg-[var(--accent)] [&>button>svg]:fill-[var(--foreground)]" />
             <MiniMap 
               style={{ backgroundColor: 'var(--card)' }}
               maskColor="rgba(0, 0, 0, 0.4)"
