@@ -27,7 +27,23 @@ export class UsersService {
     });
   }
 
+  async assignWorkspace(userId: string, name: string) {
+    const newClient = await this.prisma.client.create({
+      data: { name: `${name}'s Workspace` },
+    });
 
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { clientId: newClient.id, role: Role.CLIENT_OWNER },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        clientId: true,
+      },
+    });
+  }
 
   async findAllByTenant(clientId: string) {
     return this.prisma.user.findMany({

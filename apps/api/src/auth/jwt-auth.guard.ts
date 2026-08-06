@@ -35,6 +35,10 @@ export class JwtAuthGuard implements CanActivate {
           password: '', // Firebase handles password
         });
         request.user = { userId: newUser.id, email: newUser.email, role: newUser.role, clientId: newUser.clientId };
+      } else if (!user.clientId) {
+        // Existing user without a workspace — auto-provision one
+        const updatedUser = await this.usersService.assignWorkspace(user.id, user.name || user.email.split('@')[0]);
+        request.user = { userId: updatedUser.id, email: updatedUser.email, role: updatedUser.role, clientId: updatedUser.clientId };
       } else {
         request.user = { userId: user.id, email: user.email, role: user.role, clientId: user.clientId };
       }
