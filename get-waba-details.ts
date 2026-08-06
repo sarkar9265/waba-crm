@@ -66,10 +66,16 @@ async function main() {
   console.log('Retrieving data from the database...');
 
   try {
-    const clientCount = await prisma.client.count();
+    const clients = await prisma.client.findMany({
+      select: { id: true, name: true, companyName: true },
+      take: 10
+    });
     const userCount = await prisma.user.count();
     console.log(`\nDatabase Check:`);
-    console.log(`- Found ${clientCount} Clients`);
+    console.log(`- Found ${clients.length} Clients (Showing up to 10)`);
+    clients.forEach(c => {
+      console.log(`  -> Client: ${c.name} ${c.companyName ? `(${c.companyName})` : ''} | ID: ${c.id}`);
+    });
     console.log(`- Found ${userCount} Users`);
     console.log(`(If these are 0, you might be connected to an empty database!)\n`);
 
