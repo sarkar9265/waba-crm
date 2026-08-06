@@ -12,11 +12,15 @@ export class SanitizationInterceptor implements NestInterceptor {
     }
     
     if (request.query) {
-      request.query = this.sanitizeObject(request.query);
+      for (const key of Object.keys(request.query)) {
+        request.query[key] = this.sanitizeObject(request.query[key]);
+      }
     }
 
     if (request.params) {
-      request.params = this.sanitizeObject(request.params);
+      for (const key of Object.keys(request.params)) {
+        request.params[key] = this.sanitizeObject(request.params[key]);
+      }
     }
 
     return next.handle();
