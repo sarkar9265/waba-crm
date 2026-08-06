@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 
@@ -62,9 +63,16 @@ async function main() {
   }
 
   // Read mode (default)
-  console.log('Retrieving WABA accounts from the database...');
+  console.log('Retrieving data from the database...');
 
   try {
+    const clientCount = await prisma.client.count();
+    const userCount = await prisma.user.count();
+    console.log(`\nDatabase Check:`);
+    console.log(`- Found ${clientCount} Clients`);
+    console.log(`- Found ${userCount} Users`);
+    console.log(`(If these are 0, you might be connected to an empty database!)\n`);
+
     const wabaAccounts = await prisma.wabaAccount.findMany({
       include: {
         client: {
