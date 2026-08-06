@@ -80,16 +80,43 @@ export class CampaignService {
       data: { status: 'RUNNING' },
     });
 
-    // Mock queueing logic
-    // We don't have to resolve contacts here for the MVP, just mock a bulk enqueue
     this.logger.log(`Enqueuing campaign ${id} for audience ${JSON.stringify(campaign.audience)}`);
     
-    // Simulate enqueuing 100 messages
-    for (let i = 0; i < 100; i++) {
+    const audience = campaign.audience as any;
+    let contacts = [];
+
+    if (audience?.type === 'ALL') {
+      contacts = await this.prisma.contact.findMany({ where: { clientId, status: 'OPTED_IN' } });
+    } else if (audience?.type === 'TAG' && audience?.tags?.length > 0) {
+      contacts = await this.prisma.contact.findMany({
+        where: { 
+          clientId, 
+          status: 'OPTED_IN',
+          tags: { hasSome: audience.tags }
+        }
+      });
+    }
+
+    const campaignVariables = (campaign.variables || {}) as Record<string, string>;
+    // Sort variables by the number inside {{...}}
+    const varKeys = Object.keys(campaignVariables).sort((a, b) => {
+      const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+      const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+      return numA - numB;
+    });
+
+    for (const contact of contacts) {
+      const mappedVars = varKeys.map(key => {
+        const contactField = campaignVariables[key];
+        return (contact as any)[contactField] || '';
+      });
+
       await this.campaignQueue.add('send_template_message', {
         campaignId: id,
-        contactId: `contact_${i}`,
-        templateId: campaign.templateId,
+        clientId: clientId,
+        contactId: contact.id,
+        templateName: campaign.template?.name,
+        variables: mappedVars,
       });
     }
 

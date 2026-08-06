@@ -9,6 +9,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "@prisma/client": "^5.10.2",
+    "@types/node": "^26.1.2",
     "prettier": "^3.0.3",
     "turbo": "^2.0.0"
   },

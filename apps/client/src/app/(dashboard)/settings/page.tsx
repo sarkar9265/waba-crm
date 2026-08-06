@@ -62,27 +62,31 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // Define the callback for FB SDK
-    (window as any).fbAsyncInit = function () {
-      (window as any).FB.init({
-        appId: metaAppId,
-        cookie: true,
-        xfbml: true,
-        version: 'v20.0',
-      });
-      setIsFbSdkLoaded(true);
+    const initFb = () => {
+      if ((window as any).FB) {
+        (window as any).FB.init({
+          appId: metaAppId,
+          cookie: true,
+          xfbml: true,
+          version: 'v20.0',
+        });
+        setIsFbSdkLoaded(true);
+      }
     };
 
-    // Load the SDK script if not already present
-    if (!document.getElementById('facebook-jssdk')) {
-      const script = document.createElement('script');
-      script.id = 'facebook-jssdk';
-      script.src = 'https://connect.facebook.net/en_US/sdk.js';
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
-    } else if ((window as any).FB) {
-      setIsFbSdkLoaded(true);
+    if ((window as any).FB) {
+      initFb();
+    } else {
+      (window as any).fbAsyncInit = initFb;
+      
+      if (!document.getElementById('facebook-jssdk')) {
+        const script = document.createElement('script');
+        script.id = 'facebook-jssdk';
+        script.src = 'https://connect.facebook.net/en_US/sdk.js';
+        script.async = true;
+        script.defer = true;
+        document.body.appendChild(script);
+      }
     }
   }, [metaAppId]);
 
